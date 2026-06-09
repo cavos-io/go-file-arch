@@ -15,6 +15,7 @@ import (
 	"oss.terrastruct.com/d2/d2renderers/d2svg"
 	"oss.terrastruct.com/d2/d2themes/d2themescatalog"
 	"oss.terrastruct.com/d2/lib/textmeasure"
+	"oss.terrastruct.com/util-go/go2"
 
 	"github.com/cavos-io/go-file-arch/internal/archlint/models"
 	"github.com/cavos-io/go-file-arch/internal/archlint/models/arch"
@@ -230,21 +231,25 @@ func (o *Operation) compileGraph(ctx context.Context, graphCode []byte) ([]byte,
 		return nil, fmt.Errorf("failed create ruler: %w", err)
 	}
 
+	layoutResolver := func(engine string) (d2graph.LayoutGraph, error) {
+		return d2dagrelayout.DefaultLayout, nil
+	}
+	renderOpts := &d2svg.RenderOpts{
+		Pad:     go2.Pointer(int64(d2svg.DEFAULT_PADDING)),
+		Sketch:  go2.Pointer(true),
+		ThemeID: go2.Pointer(d2themescatalog.NeutralDefault.ID),
+	}
+
 	diagram, _, err := d2lib.Compile(ctx, string(graphCode), &d2lib.CompileOptions{
-		Layout: func(ctx context.Context, g *d2graph.Graph) error {
-			return d2dagrelayout.Layout(ctx, g, nil)
-		},
-		Ruler: ruler,
-	})
+		Layout:         go2.Pointer("dagre"),
+		LayoutResolver: layoutResolver,
+		Ruler:          ruler,
+	}, renderOpts)
 	if err != nil {
 		return nil, fmt.Errorf("failed compile d2 graph: %w", err)
 	}
 
-	out, err := d2svg.Render(diagram, &d2svg.RenderOpts{
-		Pad:     d2svg.DEFAULT_PADDING,
-		Sketch:  true,
-		ThemeID: d2themescatalog.NeutralDefault.ID,
-	})
+	out, err := d2svg.Render(diagram, renderOpts)
 	if err != nil {
 		return nil, fmt.Errorf("svg render failed: %w", err)
 	}
