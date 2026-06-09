@@ -285,3 +285,79 @@ fileNameRules:
       fileName:
         suffix: "_grpc.go"
     message: "gRPC server structs must live in *_grpc.go files."
+
+  - id: repository-constructors-in-repository-files
+    files:
+      include:
+        - adapter/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - func
+      funcNameRegex:
+        - "^New.*Repository$"
+    require:
+      fileName:
+        suffix: "_repository.go"
+    message: "Repository constructors must live in *_repository.go files."
+
+  - id: service-constructors-in-service-files
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - func
+      funcNameRegex:
+        - "^New.*Service$"
+    require:
+      fileName:
+        equals: "service.go"
+    message: "Service constructors must live in service.go."
+
+  - id: handler-methods-in-handler-files
+    files:
+      include:
+        - interface/http/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - func
+      funcNameRegex:
+        - "^Handler.*"
+        - "^AddContributorToProject$"
+        - "^DeleteContributor$"
+    require:
+      fileName:
+        suffix: "_handler.go"
+    message: "HTTP handler methods must live in *_handler.go files."
+
+  - id: mapper-functions-in-mapper-files
+    files:
+      include:
+        - adapter/**/*.go
+        - interface/grpc/*.go
+        - adapter/**/entities/*.go
+        - core/*/model/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - func
+      funcNameRegex:
+        - "^ConvertTo.*Model$"
+        - "^From.*Model$"
+        - "^FromProjectModel$"
+        - "^ToModel$"
+        - "^FromModel$"
+    require:
+      fileName:
+        matches:
+          - "^mapper\\.go$"
+          - ".*_entity\\.go$"
+          - ".*_model\\.go$"
+    message: "Mapper functions must live in mapper.go, *_entity.go, or *_model.go."

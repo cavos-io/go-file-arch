@@ -1,6 +1,9 @@
 package filearch
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
@@ -299,6 +302,31 @@ func TestFileNameAllowedSupportsAllMatcherTypes(t *testing.T) {
 	}
 }
 
+func TestFileNameRuleTriggersOnFuncNameRegex(t *testing.T) {
+	file := parseTestFile(t, "repository.go", `package adapter
+
+func NewProjectRepository() {}
+func helper() {}
+`)
+	rule := FileNameRule{
+		When: FileNameRuleWhen{
+			Declarations:  []string{"func"},
+			FuncNameRegex: []string{"^New.*Repository$"},
+		},
+		Require: FileNameRequirement{
+			FileName: FileNameCondition{Suffix: "_repository.go"},
+		},
+	}
+
+	triggers := fileNameRuleTriggers(file, rule)
+	if len(triggers) != 1 {
+		t.Fatalf("len(triggers) = %d, want 1", len(triggers))
+	}
+	if triggers[0].kind != "func" {
+		t.Fatalf("trigger kind = %q, want func", triggers[0].kind)
+	}
+}
+
 func TestLoadConfigRejectsUnknownDependencyComponent(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(dir, "core"), 0o755); err != nil {
@@ -398,4 +426,14 @@ func TestMostSpecificComponentWins(t *testing.T) {
 	if component != "interface_dto" {
 		t.Fatalf("matchComponent() = %q, want interface_dto", component)
 	}
+}
+
+func parseTestFile(t *testing.T, name string, src string) *ast.File {
+	t.Helper()
+
+	file, err := parser.ParseFile(token.NewFileSet(), name, src, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return file
 }

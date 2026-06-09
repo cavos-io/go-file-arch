@@ -23,6 +23,7 @@ type FileNameRule struct {
 type FileNameRuleWhen struct {
 	Declarations  []string `yaml:"declarations"`
 	TypeNameRegex []string `yaml:"typeNameRegex"`
+	FuncNameRegex []string `yaml:"funcNameRegex"`
 }
 
 type FileNameRequirement struct {
@@ -53,7 +54,7 @@ func (cfg *Config) validateFileNameRules() error {
 				return fmt.Errorf("fileName rule %q has unsupported declaration kind %q", rule.ID, kind)
 			}
 		}
-		for _, pattern := range append(rule.When.TypeNameRegex, rule.Require.FileName.Matches...) {
+		for _, pattern := range append(append(rule.When.TypeNameRegex, rule.When.FuncNameRegex...), rule.Require.FileName.Matches...) {
 			if _, err := regexp.Compile(pattern); err != nil {
 				return fmt.Errorf("fileName rule %q has invalid regex %q: %w", rule.ID, pattern, err)
 			}
@@ -90,7 +91,7 @@ type fileNameRuleTrigger struct {
 }
 
 func fileNameRuleTriggers(file *ast.File, rule FileNameRule) []fileNameRuleTrigger {
-	if len(rule.When.Declarations) == 0 && len(rule.When.TypeNameRegex) == 0 {
+	if len(rule.When.Declarations) == 0 && len(rule.When.TypeNameRegex) == 0 && len(rule.When.FuncNameRegex) == 0 {
 		return []fileNameRuleTrigger{{pos: file.Package, kind: "file"}}
 	}
 
@@ -98,7 +99,9 @@ func fileNameRuleTriggers(file *ast.File, rule FileNameRule) []fileNameRuleTrigg
 	for _, decl := range file.Decls {
 		switch decl := decl.(type) {
 		case *ast.FuncDecl:
-			if matchesWhenDeclaration(rule, "func") && len(rule.When.TypeNameRegex) == 0 {
+			if matchesWhenDeclaration(rule, "func") &&
+				len(rule.When.TypeNameRegex) == 0 &&
+				matchesFuncNameRegex(rule, decl.Name.Name) {
 				triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "func"})
 			}
 		case *ast.GenDecl:
@@ -145,6 +148,18 @@ func matchesTypeNameRegex(rule FileNameRule, typeName string) bool {
 	}
 	for _, pattern := range rule.When.TypeNameRegex {
 		if regexp.MustCompile(pattern).MatchString(typeName) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchesFuncNameRegex(rule FileNameRule, funcName string) bool {
+	if len(rule.When.FuncNameRegex) == 0 {
+		return true
+	}
+	for _, pattern := range rule.When.FuncNameRegex {
+		if regexp.MustCompile(pattern).MatchString(funcName) {
 			return true
 		}
 	}
