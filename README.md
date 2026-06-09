@@ -96,3 +96,9 @@ If multiple component globs match a path, `go-file-arch` chooses the most specif
 - File name rules use Go regular expressions and match only the base file name, not the full path.
 - Type declarations are classified by AST shape: interfaces are `interface`, structs are `struct`, and other type declarations are `type`.
 - Rules report matching declarations independently, so one declaration may produce diagnostics from multiple rules.
+
+## go-arch-lint Parity Status
+
+Implemented parity behaviors include missing component path validation, workdir-relative component matching, component specificity, local component dependency checks, and `commonComponents`.
+
+Remaining gaps include vendor rules, graph output, todo/legalization support, deep dependency-injection scanning, and full output comparison against `go-arch-lint` on a real consuming repository.
