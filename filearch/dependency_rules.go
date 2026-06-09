@@ -3,6 +3,7 @@ package filearch
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +18,17 @@ type DependencyRule struct {
 type componentDir struct {
 	dir     string
 	pattern string
+}
+
+type dependencyGraph struct {
+	Edges []dependencyEdge
+}
+
+type dependencyEdge struct {
+	SourceComponent string
+	TargetComponent string
+	ImportPath      string
+	Position        token.Pos
 }
 
 func (cfg *Config) validateDependencyRules() error {
@@ -34,16 +46,37 @@ func (cfg *Config) validateDependencyRules() error {
 }
 
 func checkDependencyRules(pass *analysis.Pass, file *ast.File, cfg *Config, paths []string) {
+	graph := buildDependencyGraph(file, cfg, paths)
+	for _, edge := range graph.Edges {
+		rule, ok := cfg.DependencyRules[edge.SourceComponent]
+		if !ok {
+			continue
+		}
+		if cfg.dependencyAllowed(rule, edge.TargetComponent) {
+			continue
+		}
+		pass.Reportf(
+			edge.Position,
+			"[dependencyRules.%s] dependency rule for component %s: %s packages may not import component %s via %q. Move dependency behind %s interface or %s implementation. detected import component: %s",
+			edge.SourceComponent,
+			edge.SourceComponent,
+			edge.SourceComponent,
+			edge.TargetComponent,
+			edge.ImportPath,
+			edge.SourceComponent,
+			edge.TargetComponent,
+			edge.TargetComponent,
+		)
+	}
+}
+
+func buildDependencyGraph(file *ast.File, cfg *Config, paths []string) dependencyGraph {
 	sourceComponent, ok := cfg.matchAnyComponent(paths)
 	if !ok {
-		return
+		return dependencyGraph{}
 	}
 
-	rule, ok := cfg.DependencyRules[sourceComponent]
-	if !ok {
-		return
-	}
-
+	var graph dependencyGraph
 	for _, spec := range file.Imports {
 		importPath, err := strconv.Unquote(spec.Path.Value)
 		if err != nil {
@@ -57,22 +90,14 @@ func checkDependencyRules(pass *analysis.Pass, file *ast.File, cfg *Config, path
 		if !ok {
 			continue
 		}
-		if cfg.dependencyAllowed(rule, targetComponent) {
-			continue
-		}
-		pass.Reportf(
-			spec.Pos(),
-			"[dependencyRules.%s] dependency rule for component %s: %s packages may not import component %s via %q. Move dependency behind %s interface or %s implementation. detected import component: %s",
-			sourceComponent,
-			sourceComponent,
-			sourceComponent,
-			targetComponent,
-			importPath,
-			sourceComponent,
-			targetComponent,
-			targetComponent,
-		)
+		graph.Edges = append(graph.Edges, dependencyEdge{
+			SourceComponent: sourceComponent,
+			TargetComponent: targetComponent,
+			ImportPath:      importPath,
+			Position:        spec.Pos(),
+		})
 	}
+	return graph
 }
 
 func (cfg *Config) matchAnyComponent(paths []string) (string, bool) {
