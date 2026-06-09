@@ -6,3 +6,5 @@ repos:
         entry: go run ./cmd/go-file-arch -config .go-file-arch.yml ./...
         language: system
         pass_filenames: false
+        types:
+          - go

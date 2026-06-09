@@ -123,6 +123,22 @@ contentRules:
     message: "Structs in core should live under core/**/model/**."
 
 fileNameRules:
+  - id: ban-generic-file-names
+    files:
+      include:
+        - "**/*.go"
+      exclude:
+        - "**/*_test.go"
+    deny:
+      fileName:
+        equalsAny:
+          - helper.go
+          - helpers.go
+          - common.go
+          - misc.go
+          - utils.go
+    message: "Avoid generic file names. Use a domain-specific name."
+
   - id: dto-file-name
     files:
       include:

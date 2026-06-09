@@ -17,7 +17,7 @@ The pre-commit hook runs the same command with `language: system` and `pass_file
 The YAML format is versioned and has three main sections:
 
 - `components`: named package/file areas.
-- `dependencyRules`: component dependency policy. These rules are parsed and validated in the first milestone, but not enforced yet.
+- `dependencyRules`: component dependency policy for local imports.
 - `contentRules`: AST declaration rules enforced by the analyzer.
 - `fileNameRules`: file name rules that may be triggered by file-level or declaration-level conditions.
 
@@ -77,17 +77,17 @@ fileNameRules:
     message: "DTO/request/response structs must be placed in dto.go, *_dto.go, request.go, or response.go."
 ```
 
-`require.fileName.matches` means the file name must match at least one regex. `deny.fileName.matches` means the file name must not match any listed regex.
+Supported file name matchers are `equals`, `equalsAny`, `matches`, `prefix`, and `suffix`. `require.fileName` means at least one configured matcher must match. `deny.fileName` means no configured matcher may match.
 
 ## Dependency Rules
 
-`dependencyRules` are currently config-only. The loader validates that every rule key and every `mayDependOn` target names a configured component, so malformed policies fail early.
+`dependencyRules` are parsed, validated, and enforced for local imports that can be mapped to configured components. The loader validates that every rule key and every `mayDependOn` target names a configured component, so malformed policies fail early.
 
-Future enforcement should map each checked file and each import target to configured components, then report imports whose target component is not in the source component's `mayDependOn` list or `commonComponents`.
+If multiple component globs match a path, `go-file-arch` chooses the most specific component using longer literal prefix, more literal pattern bytes, fewer wildcards, then longer pattern length. This makes patterns such as `interface/**/dto/**` win over `interface/**`.
 
 ## Limitations
 
-- Dependency rules are parsed and validated, not enforced yet.
+- Dependency rules ignore external imports and local imports that do not match any configured component.
 - Content rules inspect syntax only; they do not use type checking or semantic ownership rules.
 - File name rules use Go regular expressions and match only the base file name, not the full path.
 - Type declarations are classified by AST shape: interfaces are `interface`, structs are `struct`, and other type declarations are `type`.
