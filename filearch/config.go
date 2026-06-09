@@ -11,6 +11,7 @@ import (
 
 type Config struct {
 	Version          int                       `yaml:"version"`
+	Workdir          string                    `yaml:"workdir"`
 	Components       map[string]Component      `yaml:"components"`
 	CommonComponents []string                  `yaml:"commonComponents"`
 	DependencyRules  map[string]DependencyRule `yaml:"dependencyRules"`
@@ -20,6 +21,8 @@ type Config struct {
 	baseDir string
 
 	modulePath string
+	workdir    string
+	workdirAbs string
 }
 
 type Component struct {
@@ -62,6 +65,11 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("resolve config path %q: %w", path, err)
 	}
 	cfg.baseDir = filepath.Dir(absPath)
+	cfg.workdir = filepath.ToSlash(strings.Trim(cfg.Workdir, "/"))
+	cfg.workdirAbs = cfg.baseDir
+	if cfg.workdir != "" && cfg.workdir != "." {
+		cfg.workdirAbs = filepath.Join(cfg.baseDir, filepath.FromSlash(cfg.workdir))
+	}
 	cfg.modulePath = readModulePath(cfg.baseDir)
 
 	if err := cfg.validate(); err != nil {
@@ -112,6 +120,11 @@ func (cfg *Config) validateComponents() error {
 		if len(component.In) == 0 {
 			return fmt.Errorf("component %q must include at least one path pattern", name)
 		}
+		for _, pattern := range component.In {
+			if !cfg.componentPatternExists(pattern) {
+				return fmt.Errorf("not found directories for %q in %q", pattern, filepath.Join(cfg.workdirAbs, filepath.FromSlash(pattern)))
+			}
+		}
 	}
 	for _, name := range cfg.CommonComponents {
 		if _, ok := cfg.Components[name]; !ok {
@@ -119,4 +132,27 @@ func (cfg *Config) validateComponents() error {
 		}
 	}
 	return nil
+}
+
+func (cfg *Config) componentPatternExists(pattern string) bool {
+	found := false
+	err := filepath.WalkDir(cfg.workdirAbs, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return nil
+		}
+		rel, err := filepath.Rel(cfg.workdirAbs, path)
+		if err != nil {
+			return nil
+		}
+		rel = filepath.ToSlash(rel)
+		if rel == "." {
+			return nil
+		}
+		if matchGlob(rel, filepath.ToSlash(pattern)) {
+			found = true
+			return filepath.SkipAll
+		}
+		return nil
+	})
+	return err == nil && found
 }

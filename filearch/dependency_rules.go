@@ -56,11 +56,12 @@ func checkDependencyRules(pass *analysis.Pass, file *ast.File, cfg *Config, path
 		}
 		pass.Reportf(
 			spec.Pos(),
-			"[dependencyRules.%s] dependency rule for component %s: %s packages may not import component %s. Move dependency behind %s interface or %s implementation. detected import component: %s",
+			"[dependencyRules.%s] dependency rule for component %s: %s packages may not import component %s via %q. Move dependency behind %s interface or %s implementation. detected import component: %s",
 			sourceComponent,
 			sourceComponent,
 			sourceComponent,
 			targetComponent,
+			importPath,
 			sourceComponent,
 			targetComponent,
 			targetComponent,

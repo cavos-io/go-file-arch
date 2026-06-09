@@ -88,7 +88,7 @@ func TestAnalyzerReportsDependencyRuleViolation(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/service.go": `package user
 
-import "adapter/user" // want ` + "`\\[dependencyRules\\.core\\] dependency rule for component core: core packages may not import component adapter\\. Move dependency behind core interface or adapter implementation\\. detected import component: adapter`" + `
+import "adapter/user" // want ` + "`\\[dependencyRules\\.core\\] dependency rule for component core: core packages may not import component adapter via \"adapter/user\"\\. Move dependency behind core interface or adapter implementation\\. detected import component: adapter`" + `
 
 func Use() string {
 	return adapter.Name
@@ -107,6 +107,7 @@ const Name = "adapter"
 	configPath := filepath.Join(gopath, "go-file-arch.yml")
 	err = os.WriteFile(configPath, []byte(`
 version: 1
+workdir: src
 components:
   core:
     in:
@@ -126,16 +127,219 @@ dependencyRules:
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
 }
 
-func writeTestConfig(t *testing.T, dir string) string {
-	t.Helper()
+func TestAnalyzerAllowsConfiguredDependency(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"core/user/service.go": `package user
 
-	data, err := os.ReadFile(filepath.Join(analysistest.TestData(), "go-file-arch.yml"))
+import "core/model"
+
+func Use() string {
+	return model.Name
+}
+`,
+		"core/model/user.go": `package model
+
+const Name = "user"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  core:
+    in:
+      - core/**
+  core_model:
+    in:
+      - core/model/**
+dependencyRules:
+  core:
+    mayDependOn:
+      - core
+      - core_model
+`), 0o600)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
+}
+
+func TestAnalyzerAllowsCommonComponentDependency(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"app/user/service.go": `package user
+
+import "library/logging"
+
+func Use() string {
+	return logging.Name
+}
+`,
+		"library/logging/logging.go": `package logging
+
+const Name = "logging"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  app:
+    in:
+      - app/**
+  library:
+    in:
+      - library/**
+commonComponents:
+  - library
+dependencyRules:
+  app:
+    mayDependOn:
+      - app
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "app/user")
+}
+
+func TestAnalyzerIgnoresExternalImports(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"core/user/service.go": `package user
+
+import "fmt"
+
+func Use() string {
+	return fmt.Sprint("user")
+}
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  core:
+    in:
+      - core/**
+dependencyRules:
+  core:
+    mayDependOn:
+      - core
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
+}
+
+func TestAnalyzerIgnoresUnmappedLocalImports(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"core/user/service.go": `package user
+
+import "generated/user"
+
+func Use() string {
+	return generated.Name
+}
+`,
+		"generated/user/user.go": `package generated
+
+const Name = "generated"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  core:
+    in:
+      - core/**
+dependencyRules:
+  core:
+    mayDependOn:
+      - core
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
+}
+
+func writeTestConfig(t *testing.T, dir string) string {
+	t.Helper()
+
 	path := filepath.Join(dir, "go-file-arch.yml")
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := os.WriteFile(path, []byte(`
+version: 1
+workdir: src
+
+components:
+  core:
+    in:
+      - core/**
+
+dependencyRules:
+  core:
+    mayDependOn:
+      - core
+
+contentRules:
+  - id: core-repository-interface-only
+    files:
+      include:
+        - core/**/repository.go
+      exclude:
+        - "**/*_test.go"
+    allow:
+      declarations:
+        - interface
+    deny:
+      declarations:
+        - struct
+        - func
+        - var
+        - const
+    message: "core repository files may only define interfaces. Move implementations to adapter/**."
+
+  - id: core-no-struct-outside-model
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - core/**/model/**/*.go
+        - "**/*_test.go"
+    deny:
+      declarations:
+        - struct
+    message: "Structs in core should live under core/**/model/**."
+`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

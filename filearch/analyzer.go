@@ -43,7 +43,7 @@ func run(pass *analysis.Pass) (any, error) {
 func runWithConfig(pass *analysis.Pass, cfg *Config) (any, error) {
 	for _, file := range pass.Files {
 		filename := pass.Fset.Position(file.Pos()).Filename
-		paths := pathCandidates(filename, cfg.baseDir)
+		paths := pathCandidates(filename, cfg)
 		for _, rule := range cfg.ContentRules {
 			if !ruleAppliesToPath(rule, paths) {
 				continue
@@ -62,7 +62,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config) (any, error) {
 	return nil, nil
 }
 
-func pathCandidates(filename, configBase string) []string {
+func pathCandidates(filename string, cfg *Config) []string {
 	var candidates []string
 	add := func(path string) {
 		path = filepath.ToSlash(path)
@@ -84,8 +84,13 @@ func pathCandidates(filename, configBase string) []string {
 			add(rel)
 		}
 	}
-	if configBase != "" {
-		if rel, err := filepath.Rel(configBase, filename); err == nil {
+	if cfg.baseDir != "" {
+		if rel, err := filepath.Rel(cfg.baseDir, filename); err == nil {
+			add(rel)
+		}
+	}
+	if cfg.workdirAbs != "" {
+		if rel, err := filepath.Rel(cfg.workdirAbs, filename); err == nil {
 			add(rel)
 		}
 	}

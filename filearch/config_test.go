@@ -3,11 +3,20 @@ package filearch
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
 func TestLoadConfig(t *testing.T) {
 	dir := t.TempDir()
+	for _, path := range []string{
+		"core/user/model",
+		"library/logging",
+	} {
+		if err := os.MkdirAll(filepath.Join(dir, path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	path := filepath.Join(dir, "config.yml")
 	err := os.WriteFile(path, []byte(`
 version: 1
@@ -292,6 +301,9 @@ func TestFileNameAllowedSupportsAllMatcherTypes(t *testing.T) {
 
 func TestLoadConfigRejectsUnknownDependencyComponent(t *testing.T) {
 	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "core"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	path := filepath.Join(dir, "config.yml")
 	err := os.WriteFile(path, []byte(`
 version: 1
@@ -311,6 +323,59 @@ dependencyRules:
 	_, err = LoadConfig(path)
 	if err == nil {
 		t.Fatal("LoadConfig() error = nil, want error")
+	}
+}
+
+func TestLoadConfigRejectsMissingComponentPath(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	err := os.WriteFile(path, []byte(`
+version: 1
+components:
+  adapter:
+    in:
+      - adapter/**
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = LoadConfig(path)
+	if err == nil {
+		t.Fatal("LoadConfig() error = nil, want error")
+	}
+	if !strings.Contains(err.Error(), "not found directories for \"adapter/**\"") {
+		t.Fatalf("LoadConfig() error = %v, want missing component path error", err)
+	}
+}
+
+func TestLoadConfigValidatesComponentPathsRelativeToWorkdir(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(dir, "internal", "core", "user"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.yml")
+	err := os.WriteFile(path, []byte(`
+version: 1
+workdir: internal
+components:
+  core:
+    in:
+      - core/**
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.workdir != "internal" {
+		t.Fatalf("workdir = %q, want internal", cfg.workdir)
+	}
+	if got := filepath.ToSlash(cfg.workdirAbs); got != filepath.ToSlash(filepath.Join(dir, "internal")) {
+		t.Fatalf("workdirAbs = %q, want %q", got, filepath.ToSlash(filepath.Join(dir, "internal")))
 	}
 }
 
