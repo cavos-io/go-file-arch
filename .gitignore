@@ -1,0 +1,31 @@
+# IDE
+.vscode/
+.idea/
+
+# Go build output
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+
+# Go workspace
+go.work
+go.work.sum
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Local runtime/config
+.tmp/
+refs/
+
+# Agent files
+.claude
+.codex
+.agents
+.gemini
+.pi
