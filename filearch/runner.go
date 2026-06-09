@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"go/ast"
+	"go/parser"
 	"go/token"
 	"strings"
 
@@ -37,7 +39,7 @@ func Run(ctx context.Context, opts Options) error {
 		Context: ctx,
 		Dir:     opts.Workdir,
 		Fset:    fset,
-		Mode:    packages.NeedName | packages.NeedFiles | packages.NeedSyntax,
+		Mode:    packages.NeedName | packages.NeedFiles,
 	}, patterns...)
 	if err != nil {
 		return fmt.Errorf("load packages: %w", err)
@@ -48,10 +50,14 @@ func Run(ctx context.Context, opts Options) error {
 
 	var diagnostics []analysis.Diagnostic
 	for _, pkg := range pkgs {
+		files, err := parsePackageFiles(fset, pkg.GoFiles)
+		if err != nil {
+			return err
+		}
 		pass := &analysis.Pass{
 			Analyzer: Analyzer,
 			Fset:     fset,
-			Files:    pkg.Syntax,
+			Files:    files,
 			Report: func(d analysis.Diagnostic) {
 				diagnostics = append(diagnostics, d)
 			},
@@ -72,4 +78,16 @@ func Run(ctx context.Context, opts Options) error {
 		fmt.Fprintf(&b, "\n%s: %s", pos, diagnostic.Message)
 	}
 	return errors.New(b.String())
+}
+
+func parsePackageFiles(fset *token.FileSet, filenames []string) ([]*ast.File, error) {
+	files := make([]*ast.File, 0, len(filenames))
+	for _, filename := range filenames {
+		file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
+		if err != nil {
+			return nil, fmt.Errorf("parse %s: %w", filename, err)
+		}
+		files = append(files, file)
+	}
+	return files, nil
 }
