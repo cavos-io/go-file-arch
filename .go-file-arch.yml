@@ -1,0 +1,147 @@
+version: 1
+
+components:
+  app:
+    in:
+      - app/**
+
+  cmd:
+    in:
+      - cmd/**
+
+  interface_dto:
+    in:
+      - interface/**/dto/**
+
+  interface:
+    in:
+      - interface/**
+
+  adapter_entities:
+    in:
+      - adapter/**/entities/**
+
+  adapter:
+    in:
+      - adapter/**
+
+  core_model:
+    in:
+      - core/**/model/**
+
+  core:
+    in:
+      - core/**
+
+  library:
+    in:
+      - library/**
+
+commonComponents:
+  - library
+
+dependencyRules:
+  cmd:
+    mayDependOn:
+      - app
+
+  app:
+    mayDependOn:
+      - adapter
+      - adapter_entities
+      - core
+      - core_model
+      - interface
+      - interface_dto
+      - library
+
+  interface:
+    mayDependOn:
+      - core
+      - core_model
+      - interface
+      - interface_dto
+
+  interface_dto:
+    mayDependOn:
+      - core
+      - core_model
+
+  adapter:
+    mayDependOn:
+      - core
+      - core_model
+      - adapter
+      - adapter_entities
+
+  adapter_entities:
+    mayDependOn:
+      - core
+      - core_model
+
+  core:
+    mayDependOn:
+      - core
+      - core_model
+
+  core_model:
+    mayDependOn:
+      - core
+
+  library:
+    mayDependOn:
+      - library
+
+contentRules:
+  - id: core-repository-interface-only
+    files:
+      include:
+        - core/**/repository.go
+      exclude:
+        - "**/*_test.go"
+    allow:
+      declarations:
+        - interface
+    deny:
+      declarations:
+        - struct
+        - func
+        - var
+        - const
+    message: "core repository files may only define interfaces. Move implementations to adapter/**."
+
+  - id: core-no-struct-outside-model
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - core/**/model/**/*.go
+        - "**/*_test.go"
+    deny:
+      declarations:
+        - struct
+    message: "Structs in core should live under core/**/model/**."
+
+fileNameRules:
+  - id: dto-file-name
+    files:
+      include:
+        - interface/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*DTO$"
+        - ".*Dto$"
+        - ".*Request$"
+        - ".*Response$"
+    require:
+      fileName:
+        matches:
+          - ".*_dto\\.go$"
+          - "dto\\.go$"
+          - "request\\.go$"
+          - "response\\.go$"
+    message: "DTO/request/response structs must be placed in dto.go, *_dto.go, request.go, or response.go."
