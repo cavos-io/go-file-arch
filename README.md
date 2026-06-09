@@ -14,6 +14,14 @@ The pre-commit hook runs the same command with `language: system` and `pass_file
 
 The root `.go-file-arch.yml` dogfoods this repository with `cmd/**` and `filearch/**` components. Layered application examples are shown below and in test fixtures.
 
+To run copied `go-arch-lint` checks alongside `contentRules` and `fileNameRules`, pass a go-arch-lint config too:
+
+```sh
+go run ./cmd/go-file-arch -config .go-file-arch.yml -arch-lint-config .go-arch-lint.yml ./...
+```
+
+The library also exposes `CheckArchLint` for structured check results and `RunArchLintCLI` for copied go-arch-lint CLI commands such as `check`, `mapping`, `graph`, `schema`, `version`, and `selfInspect`.
+
 ## Config
 
 The YAML format is versioned and has three main sections:
@@ -99,6 +107,6 @@ If multiple component globs match a path, `go-file-arch` chooses the most specif
 
 ## go-arch-lint Parity Status
 
-Implemented parity behaviors include missing component path validation, workdir-relative component matching, component specificity, local component dependency checks, and `commonComponents`.
+`go-file-arch` vendors the go-arch-lint engine under `internal/archlint` with the original MIT license notice. The copied engine is available from the public `filearch` package and can be run alongside `contentRules` and `fileNameRules`.
 
-Remaining gaps include vendor rules, graph output, todo/legalization support, deep dependency-injection scanning, and full output comparison against `go-arch-lint` on a real consuming repository.
+Native dependency behavior still implements a smaller subset: missing component path validation, workdir-relative component matching, component specificity, local component dependency checks, and `commonComponents`. Full replacement still requires output comparison against `go-arch-lint` on a real consuming repository.
