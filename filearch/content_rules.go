@@ -92,7 +92,7 @@ func reportIfContentViolation(pass *analysis.Pass, rule ContentRule, kind string
 		return
 	}
 
-	pass.Reportf(pos, "%s: %s detected declaration kind: %s", rule.ID, rule.Message, kind)
+	pass.Reportf(pos, "[%s]: %s detected declaration kind: %s", rule.ID, rule.Message, kind)
 }
 
 func ruleAppliesToPath(rule ContentRule, paths []string) bool {

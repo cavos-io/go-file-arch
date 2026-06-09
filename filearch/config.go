@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -17,6 +18,8 @@ type Config struct {
 	FileNameRules    []FileNameRule            `yaml:"fileNameRules"`
 
 	baseDir string
+
+	modulePath string
 }
 
 type Component struct {
@@ -59,6 +62,7 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("resolve config path %q: %w", path, err)
 	}
 	cfg.baseDir = filepath.Dir(absPath)
+	cfg.modulePath = readModulePath(cfg.baseDir)
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config %q: %w", path, err)
@@ -84,6 +88,20 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	return nil
+}
+
+func readModulePath(baseDir string) string {
+	data, err := os.ReadFile(filepath.Join(baseDir, "go.mod"))
+	if err != nil {
+		return ""
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "module ") {
+			return strings.TrimSpace(strings.TrimPrefix(line, "module "))
+		}
+	}
+	return ""
 }
 
 func (cfg *Config) validateComponents() error {

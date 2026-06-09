@@ -56,6 +56,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config) (any, error) {
 			}
 			checkFileNameRule(pass, file, filename, rule)
 		}
+		checkDependencyRules(pass, file, cfg, paths)
 	}
 
 	return nil, nil

@@ -80,7 +80,7 @@ func checkFileNameRule(pass *analysis.Pass, file *ast.File, filename string, rul
 	}
 
 	for _, trigger := range triggers {
-		pass.Reportf(trigger.pos, "%s: %s file name %q %s; detected declaration kind: %s", rule.ID, rule.Message, baseName, violation, trigger.kind)
+		pass.Reportf(trigger.pos, "[%s]: %s file name %q %s; detected declaration kind: %s", rule.ID, rule.Message, baseName, violation, trigger.kind)
 	}
 }
 

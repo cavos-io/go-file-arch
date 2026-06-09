@@ -313,3 +313,24 @@ dependencyRules:
 		t.Fatal("LoadConfig() error = nil, want error")
 	}
 }
+
+func TestMostSpecificComponentWins(t *testing.T) {
+	cfg := &Config{
+		Components: map[string]Component{
+			"interface": {
+				In: []string{"interface/**"},
+			},
+			"interface_dto": {
+				In: []string{"interface/**/dto/**"},
+			},
+		},
+	}
+
+	component, ok := cfg.matchComponent("interface/http/dto/user.go")
+	if !ok {
+		t.Fatal("matchComponent() ok = false, want true")
+	}
+	if component != "interface_dto" {
+		t.Fatalf("matchComponent() = %q, want interface_dto", component)
+	}
+}
