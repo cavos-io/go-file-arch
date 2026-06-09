@@ -10,25 +10,80 @@ import (
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func TestProjectManagerStrictConfig(t *testing.T) {
+func TestStrictFixturePasses(t *testing.T) {
 	testdata := analysistest.TestData()
 	configPath := filepath.Join(testdata, "go-file-arch.yml")
 
 	err := Run(context.Background(), Options{
 		ConfigPath: configPath,
-		Workdir:    filepath.Clean(filepath.Join(testdata, "..", "..", "..", "project-manager")),
+		Workdir:    filepath.Join(testdata, "src"),
+		Patterns:   []string{"./..."},
+	})
+	if err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
+
+func TestStrictFixtureReportsViolations(t *testing.T) {
+	sourceConfig := filepath.Join(analysistest.TestData(), "go-file-arch.yml")
+	data, err := os.ReadFile(sourceConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tempDir := t.TempDir()
+	auditfail := filepath.Join(tempDir, "auditfail")
+	copyFixtureDir(t, filepath.Join(analysistest.TestData(), "auditfail"), auditfail)
+	configPath := filepath.Join(tempDir, "go-file-arch.yml")
+	configData := strings.Replace(string(data), "workdir: src", "workdir: auditfail", 1)
+	if err := os.WriteFile(configPath, []byte(configData), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err = Run(context.Background(), Options{
+		ConfigPath: configPath,
+		Workdir:    auditfail,
 		Patterns:   []string{"./..."},
 	})
 	if err == nil {
-		t.Fatal("Run() error = nil, want strict project-manager violations")
+		t.Fatal("Run() error = nil, want strict fixture violations")
 	}
 	for _, want := range []string{
-		"ban-generic-file-names",
-		"core/project/helper.go",
+		"core-repository-interface-only",
+		"core-no-struct-outside-model-or-service",
+		"dto-structs-in-dto-files",
+		"handlers-in-handler-files",
+		"handler-methods-in-handler-files",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run() error = %v, want %q", err, want)
 		}
+	}
+}
+
+func copyFixtureDir(t *testing.T, src, dst string) {
+	t.Helper()
+
+	err := filepath.WalkDir(src, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(src, path)
+		if err != nil {
+			return err
+		}
+		target := filepath.Join(dst, rel)
+		if entry.IsDir() {
+			return os.MkdirAll(target, 0o755)
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(target, data, 0o600)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

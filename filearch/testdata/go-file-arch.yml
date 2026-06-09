@@ -1,8 +1,8 @@
 version: 1
 
-# Strict profile derived from refs/project-manager.
-# The path points at the real sibling project used as the integration fixture.
-workdir: ../../../project-manager
+# Strict layered fixture profile for go-file-arch.
+# This fixture is local and self-contained under filearch/testdata/src.
+workdir: src
 
 components:
   cmd:
