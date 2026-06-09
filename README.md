@@ -12,6 +12,8 @@ go run ./cmd/go-file-arch -config .go-file-arch.yml ./...
 
 The pre-commit hook runs the same command with `language: system` and `pass_filenames: false`.
 
+The root `.go-file-arch.yml` dogfoods this repository with `cmd/**` and `filearch/**` components. Layered application examples are shown below and in test fixtures.
+
 ## Config
 
 The YAML format is versioned and has three main sections:
@@ -20,6 +22,8 @@ The YAML format is versioned and has three main sections:
 - `dependencyRules`: component dependency policy for local imports.
 - `contentRules`: AST declaration rules enforced by the analyzer.
 - `fileNameRules`: file name rules that may be triggered by file-level or declaration-level conditions.
+
+`workdir` is optional. When set, component, content, file-name, and dependency path matching are relative to that directory.
 
 Example content rule:
 
@@ -81,7 +85,7 @@ Supported file name matchers are `equals`, `equalsAny`, `matches`, `prefix`, and
 
 ## Dependency Rules
 
-`dependencyRules` are parsed, validated, and enforced for local imports that can be mapped to configured components. The loader validates that every rule key and every `mayDependOn` target names a configured component, so malformed policies fail early.
+`dependencyRules` are parsed, validated, and enforced for local imports that can be mapped to configured components. The loader validates that every rule key and every `mayDependOn` target names a configured component, and that each component `in` pattern matches at least one existing path under the config directory or `workdir`, so malformed policies fail early.
 
 If multiple component globs match a path, `go-file-arch` chooses the most specific component using longer literal prefix, more literal pattern bytes, fewer wildcards, then longer pattern length. This makes patterns such as `interface/**/dto/**` win over `interface/**`.
 
