@@ -73,6 +73,9 @@ func LoadConfig(path string) (*Config, error) {
 		cfg.workdirAbs = filepath.Join(cfg.baseDir, filepath.FromSlash(cfg.workdir))
 	}
 	cfg.modulePath = readModulePath(cfg.baseDir)
+	if cfg.modulePath == "" {
+		cfg.modulePath = readModulePath(cfg.workdirAbs)
+	}
 
 	if err := cfg.validate(); err != nil {
 		return nil, fmt.Errorf("invalid config %q: %w", path, err)

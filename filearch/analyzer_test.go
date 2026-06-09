@@ -1,18 +1,35 @@
 package filearch
 
 import (
+	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"golang.org/x/tools/go/analysis/analysistest"
 )
 
-func TestAnalyzer(t *testing.T) {
+func TestProjectManagerStrictConfig(t *testing.T) {
 	testdata := analysistest.TestData()
 	configPath := filepath.Join(testdata, "go-file-arch.yml")
 
-	analysistest.Run(t, testdata, NewAnalyzer(configPath), "core/user", "core/badstruct", "core/badfunc", "interface/http")
+	err := Run(context.Background(), Options{
+		ConfigPath: configPath,
+		Workdir:    filepath.Clean(filepath.Join(testdata, "..", "..", "..", "project-manager")),
+		Patterns:   []string{"./..."},
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil, want strict project-manager violations")
+	}
+	for _, want := range []string{
+		"ban-generic-file-names",
+		"core/project/helper.go",
+	} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run() error = %v, want %q", err, want)
+		}
+	}
 }
 
 func TestAnalyzerRejectsStructInCoreUserRepository(t *testing.T) {

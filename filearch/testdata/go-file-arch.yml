@@ -1,30 +1,102 @@
 version: 1
-workdir: src
+
+# Strict profile derived from refs/project-manager.
+# The path points at the real sibling project used as the integration fixture.
+workdir: ../../../project-manager
 
 components:
+  cmd:
+    in:
+      - cmd
+      - cmd/*
+
+  adapter_entities:
+    in:
+      - adapter/**/entities
+
+  adapter:
+    in:
+      - adapter/*
+
+  interface_dto:
+    in:
+      - interface/http/dto
+
+  interface_http:
+    in:
+      - interface/http
+
+  interface_grpc:
+    in:
+      - interface/grpc
+
   core_model:
     in:
-      - core/**/model/**
+      - core/*/model
 
   core:
     in:
-      - core/**
+      - core/*
+
+  library:
+    in:
+      - library
+
+commonComponents:
+  - library
 
 dependencyRules:
+  cmd:
+    mayDependOn:
+      - cmd
+
+  adapter:
+    mayDependOn:
+      - adapter
+      - adapter_entities
+      - core
+      - core_model
+
+  adapter_entities:
+    mayDependOn:
+      - core_model
+
+  interface_http:
+    mayDependOn:
+      - core
+      - core_model
+      - interface_dto
+
+  interface_grpc:
+    mayDependOn:
+      - core
+      - core_model
+      - interface_dto
+
+  interface_dto:
+    mayDependOn:
+      - interface_dto
+
   core:
     mayDependOn:
       - core
       - core_model
+      - interface_dto
 
   core_model:
     mayDependOn:
-      - core
+      - core_model
+      - interface_dto
+
+  library:
+    mayDependOn:
+      - library
 
 contentRules:
   - id: core-repository-interface-only
     files:
       include:
-        - core/**/repository.go
+        - core/*/repository.go
       exclude:
         - "**/*_test.go"
     allow:
@@ -36,40 +108,180 @@ contentRules:
         - func
         - var
         - const
-    message: "core repository files may only define interfaces. Move implementations to adapter/**."
+    message: "Core repository contracts must only define interfaces. Put implementations under adapter/**."
 
-  - id: core-no-struct-outside-model
+  - id: core-no-struct-outside-model-or-service
     files:
       include:
         - core/**/*.go
       exclude:
-        - core/**/model/**/*.go
+        - core/**/model/*.go
+        - core/*/service.go
         - "**/*_test.go"
     deny:
       declarations:
         - struct
-    message: "Structs in core should live under core/**/model/**."
+    message: "Core structs should live in core/*/model/*.go or core/*/service.go."
 
-fileNameRules:
-  - id: dto-file-name
+  - id: adapter-repository-no-interface
     files:
       include:
-        - interface/**/*.go
+        - adapter/**/*_repository.go
+      exclude:
+        - "**/*_test.go"
+    deny:
+      declarations:
+        - interface
+    message: "Adapter repository files should contain concrete implementations, not interfaces."
+
+fileNameRules:
+  - id: ban-generic-file-names
+    files:
+      include:
+        - "**/*.go"
+      exclude:
+        - "**/*_test.go"
+    deny:
+      fileName:
+        equalsAny:
+          - helper.go
+          - helpers.go
+          - common.go
+          - misc.go
+          - utils.go
+    message: "Avoid generic file names. Use a domain-specific name."
+
+  - id: dto-structs-in-dto-files
+    files:
+      include:
+        - interface/http/dto/*.go
       exclude:
         - "**/*_test.go"
     when:
       declarations:
         - struct
       typeNameRegex:
-        - ".*DTO$"
         - ".*Dto$"
+        - ".*DTO$"
         - ".*Request$"
         - ".*Response$"
+        - ".*Criterion$"
+        - ".*Scorecard$"
+        - ".*Group$"
     require:
       fileName:
-        matches:
-          - ".*_dto\\.go$"
-          - "dto\\.go$"
-          - "request\\.go$"
-          - "response\\.go$"
-    message: "DTO/request/response structs must be placed in dto.go, *_dto.go, request.go, or response.go."
+        suffix: "_dto.go"
+    message: "HTTP DTO structs must live in *_dto.go files."
+
+  - id: model-structs-in-model-files
+    files:
+      include:
+        - core/*/model/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*Model$"
+    require:
+      fileName:
+        suffix: "_model.go"
+    message: "Core model structs must live in *_model.go files."
+
+  - id: entity-structs-in-entity-files
+    files:
+      include:
+        - adapter/**/entities/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*Entity$"
+    require:
+      fileName:
+        suffix: "_entity.go"
+    message: "Persistence entity structs must live in *_entity.go files."
+
+  - id: repository-structs-in-repository-files
+    files:
+      include:
+        - adapter/**/*.go
+      exclude:
+        - adapter/**/entities/*.go
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*Repository$"
+    require:
+      fileName:
+        suffix: "_repository.go"
+    message: "Repository implementations must live in *_repository.go files."
+
+  - id: service-contracts-in-service-files
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - interface
+      typeNameRegex:
+        - "^I.*Service$"
+    require:
+      fileName:
+        equals: "service.go"
+    message: "Service interfaces must live in service.go."
+
+  - id: repository-contracts-in-repository-files
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - interface
+      typeNameRegex:
+        - "^I.*Repository$"
+    require:
+      fileName:
+        equals: "repository.go"
+    message: "Repository interfaces must live in repository.go."
+
+  - id: handlers-in-handler-files
+    files:
+      include:
+        - interface/http/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*Handler$"
+    require:
+      fileName:
+        suffix: "_handler.go"
+    message: "HTTP handler structs must live in *_handler.go files."
+
+  - id: grpc-server-in-grpc-file
+    files:
+      include:
+        - interface/grpc/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      declarations:
+        - struct
+      typeNameRegex:
+        - ".*GrpcServer$"
+    require:
+      fileName:
+        suffix: "_grpc.go"
+    message: "gRPC server structs must live in *_grpc.go files."
