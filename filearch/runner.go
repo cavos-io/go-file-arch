@@ -7,6 +7,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -14,9 +15,10 @@ import (
 )
 
 type Options struct {
-	ConfigPath string
-	Patterns   []string
-	Workdir    string
+	ConfigPath         string
+	ArchLintConfigPath string
+	Patterns           []string
+	Workdir            string
 }
 
 func Run(ctx context.Context, opts Options) error {
@@ -67,17 +69,79 @@ func Run(ctx context.Context, opts Options) error {
 		}
 	}
 
-	if len(diagnostics) == 0 {
+	var messages []string
+	if len(diagnostics) > 0 {
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d architecture violation(s):", len(diagnostics))
+		for _, diagnostic := range diagnostics {
+			pos := fset.Position(diagnostic.Pos)
+			fmt.Fprintf(&b, "\n%s: %s", pos, diagnostic.Message)
+		}
+		messages = append(messages, b.String())
+	}
+
+	if opts.ArchLintConfigPath != "" {
+		archLintProjectPath := cfg.baseDir
+		if opts.Workdir != "" {
+			if abs, err := filepath.Abs(opts.Workdir); err == nil {
+				archLintProjectPath = abs
+			}
+		}
+		result, err := CheckArchLint(ctx, ArchLintOptions{
+			ProjectPath: archLintProjectPath,
+			ArchFile:    opts.ArchLintConfigPath,
+		})
+		if err != nil {
+			return err
+		}
+		if archLintHasFindings(result) {
+			messages = append(messages, formatArchLintFindings(result))
+		}
+	}
+
+	if len(messages) == 0 {
 		return nil
 	}
 
+	return errors.New(strings.Join(messages, "\n"))
+}
+
+func archLintHasFindings(result ArchLintCheckResult) bool {
+	return result.HasWarnings ||
+		len(result.DependencyWarnings) > 0 ||
+		len(result.MatchWarnings) > 0 ||
+		result.DeepScanWarnings > 0 ||
+		len(result.DocumentNotices) > 0
+}
+
+func formatArchLintFindings(result ArchLintCheckResult) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "%d architecture violation(s):", len(diagnostics))
-	for _, diagnostic := range diagnostics {
-		pos := fset.Position(diagnostic.Pos)
-		fmt.Fprintf(&b, "\n%s: %s", pos, diagnostic.Message)
+	total := len(result.DependencyWarnings) + len(result.MatchWarnings) + result.DeepScanWarnings + len(result.DocumentNotices)
+	fmt.Fprintf(&b, "%d go-arch-lint violation(s):", total)
+	for _, notice := range result.DocumentNotices {
+		fmt.Fprintf(&b, "\n%s:%d:%d: %s", notice.File, notice.Line, notice.Column, notice.Text)
 	}
-	return errors.New(b.String())
+	for _, warning := range result.DependencyWarnings {
+		fmt.Fprintf(
+			&b,
+			"\n%s:%d:%d: component %s may not import %s",
+			warning.FilePath,
+			warning.Line,
+			warning.Column,
+			warning.ComponentName,
+			warning.ImportPath,
+		)
+	}
+	for _, warning := range result.MatchWarnings {
+		fmt.Fprintf(&b, "\n%s: file does not match any component", warning.FilePath)
+	}
+	if result.DeepScanWarnings > 0 {
+		fmt.Fprintf(&b, "\n%d deep-scan warning(s)", result.DeepScanWarnings)
+	}
+	if result.OmittedCount > 0 {
+		fmt.Fprintf(&b, "\n%d warning(s) omitted", result.OmittedCount)
+	}
+	return b.String()
 }
 
 func parsePackageFiles(fset *token.FileSet, filenames []string) ([]*ast.File, error) {
