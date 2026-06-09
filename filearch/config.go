@@ -23,6 +23,8 @@ type Config struct {
 	modulePath string
 	workdir    string
 	workdirAbs string
+
+	componentDirs map[string][]componentDir
 }
 
 type Component struct {
@@ -113,6 +115,7 @@ func readModulePath(baseDir string) string {
 }
 
 func (cfg *Config) validateComponents() error {
+	cfg.componentDirs = make(map[string][]componentDir)
 	for name, component := range cfg.Components {
 		if name == "" {
 			return fmt.Errorf("component name is required")
@@ -121,9 +124,11 @@ func (cfg *Config) validateComponents() error {
 			return fmt.Errorf("component %q must include at least one path pattern", name)
 		}
 		for _, pattern := range component.In {
-			if !cfg.componentPatternExists(pattern) {
+			matches := cfg.resolveComponentDirectories(pattern)
+			if len(matches) == 0 {
 				return fmt.Errorf("not found directories for %q in %q", pattern, filepath.Join(cfg.workdirAbs, filepath.FromSlash(pattern)))
 			}
+			cfg.componentDirs[name] = append(cfg.componentDirs[name], matches...)
 		}
 	}
 	for _, name := range cfg.CommonComponents {
@@ -134,10 +139,13 @@ func (cfg *Config) validateComponents() error {
 	return nil
 }
 
-func (cfg *Config) componentPatternExists(pattern string) bool {
-	found := false
+func (cfg *Config) resolveComponentDirectories(pattern string) []componentDir {
+	var matches []componentDir
 	err := filepath.WalkDir(cfg.workdirAbs, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
+			return nil
+		}
+		if !d.IsDir() {
 			return nil
 		}
 		rel, err := filepath.Rel(cfg.workdirAbs, path)
@@ -149,10 +157,15 @@ func (cfg *Config) componentPatternExists(pattern string) bool {
 			return nil
 		}
 		if matchGlob(rel, filepath.ToSlash(pattern)) {
-			found = true
-			return filepath.SkipAll
+			matches = append(matches, componentDir{
+				dir:     rel,
+				pattern: filepath.ToSlash(pattern),
+			})
 		}
 		return nil
 	})
-	return err == nil && found
+	if err != nil {
+		return nil
+	}
+	return matches
 }

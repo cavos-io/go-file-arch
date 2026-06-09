@@ -3,6 +3,7 @@ package filearch
 import (
 	"fmt"
 	"go/ast"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -11,6 +12,11 @@ import (
 
 type DependencyRule struct {
 	MayDependOn []string `yaml:"mayDependOn"`
+}
+
+type componentDir struct {
+	dir     string
+	pattern string
 }
 
 func (cfg *Config) validateDependencyRules() error {
@@ -80,7 +86,31 @@ func (cfg *Config) matchAnyComponent(paths []string) (string, bool) {
 }
 
 func (cfg *Config) matchComponent(path string) (string, bool) {
+	path = strings.Trim(filepath.ToSlash(path), "/")
+
 	var best componentMatch
+	if len(cfg.componentDirs) > 0 {
+		for name, dirs := range cfg.componentDirs {
+			for _, dir := range dirs {
+				if path != strings.Trim(dir.dir, "/") {
+					continue
+				}
+				candidate := componentMatch{
+					name:         name,
+					pattern:      dir.pattern,
+					prefixBytes:  nonWildcardPrefixLen(dir.pattern),
+					literalBytes: literalLen(dir.pattern),
+					wildcards:    wildcardCount(dir.pattern),
+				}
+				if !best.ok || candidate.moreSpecificThan(best) {
+					best = candidate
+					best.ok = true
+				}
+			}
+		}
+		return best.name, best.ok
+	}
+
 	for name, component := range cfg.Components {
 		for _, pattern := range component.In {
 			if !MatchesAnyGlob(path, []string{pattern}) {

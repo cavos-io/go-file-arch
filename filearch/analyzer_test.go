@@ -127,6 +127,49 @@ dependencyRules:
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
 }
 
+func TestAnalyzerMatchesComponentsByPackageDirectory(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"core/user/service.go": `package user
+
+import "adapter/user" // want ` + "`\\[dependencyRules\\.core\\] dependency rule for component core: core packages may not import component adapter via \"adapter/user\"\\. Move dependency behind core interface or adapter implementation\\. detected import component: adapter`" + `
+
+func Use() string {
+	return adapter.Name
+}
+`,
+		"adapter/user/repository.go": `package adapter
+
+const Name = "adapter"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  core:
+    in:
+      - core/*
+  adapter:
+    in:
+      - adapter/*
+dependencyRules:
+  core:
+    mayDependOn:
+      - core
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
+}
+
 func TestAnalyzerAllowsConfiguredDependency(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/service.go": `package user

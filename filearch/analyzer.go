@@ -76,28 +76,35 @@ func pathCandidates(filename string, cfg *Config) []string {
 		}
 		candidates = append(candidates, path)
 	}
+	addWithDir := func(path string) {
+		add(path)
+		dir := filepath.ToSlash(filepath.Dir(path))
+		if dir != "." && dir != "/" {
+			add(dir)
+		}
+	}
 
-	add(filename)
+	addWithDir(filename)
 
 	if wd, err := os.Getwd(); err == nil {
 		if rel, err := filepath.Rel(wd, filename); err == nil {
-			add(rel)
+			addWithDir(rel)
 		}
 	}
 	if cfg.baseDir != "" {
 		if rel, err := filepath.Rel(cfg.baseDir, filename); err == nil {
-			add(rel)
+			addWithDir(rel)
 		}
 	}
 	if cfg.workdirAbs != "" {
 		if rel, err := filepath.Rel(cfg.workdirAbs, filename); err == nil {
-			add(rel)
+			addWithDir(rel)
 		}
 	}
 
 	slash := filepath.ToSlash(filename)
 	if idx := strings.LastIndex(slash, "/src/"); idx >= 0 {
-		add(slash[idx+len("/src/"):])
+		addWithDir(slash[idx+len("/src/"):])
 	}
 
 	return candidates
