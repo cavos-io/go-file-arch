@@ -15,6 +15,15 @@ func MatchesAnyGlob(path string, patterns []string) bool {
 	return false
 }
 
+func MatchesAnyPathGlob(paths []string, patterns []string) bool {
+	for _, path := range paths {
+		if MatchesAnyGlob(path, patterns) {
+			return true
+		}
+	}
+	return false
+}
+
 func matchGlob(path, pattern string) bool {
 	path = strings.Trim(path, "/")
 	pattern = strings.Trim(pattern, "/")

@@ -96,8 +96,11 @@ func reportIfContentViolation(pass *analysis.Pass, rule ContentRule, kind string
 }
 
 func ruleAppliesToPath(rule ContentRule, paths []string) bool {
+	if MatchesAnyPathGlob(paths, rule.Files.Exclude) {
+		return false
+	}
 	for _, path := range paths {
-		if MatchesAnyGlob(path, rule.Files.Include) && !MatchesAnyGlob(path, rule.Files.Exclude) {
+		if MatchesAnyGlob(path, rule.Files.Include) {
 			return true
 		}
 	}

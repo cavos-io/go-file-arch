@@ -25,6 +25,7 @@ fileNameRules:
         - "**/*.go"
       exclude:
         - "**/*_test.go"
+        - "internal/archlint/**"
     deny:
       fileName:
         equalsAny:
