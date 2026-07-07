@@ -43,14 +43,6 @@ func main() {
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
 	flag.Parse()
 
-	if configPath == "" {
-		flag.Usage()
-		if flag.NFlag() == 0 && flag.NArg() == 0 {
-			os.Exit(0)
-		}
-		os.Exit(2)
-	}
-
 	if err := filearch.Run(context.Background(), filearch.Options{
 		ConfigPath:         configPath,
 		ArchLintConfigPath: archLintConfigPath,
