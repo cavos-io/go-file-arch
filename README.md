@@ -4,29 +4,72 @@
 
 For now, it complements `go-arch-lint`. Do not remove `go-arch-lint` until `go-file-arch` reaches dependency-rule parity.
 
-Run it from the repository root:
+## Install
 
 ```sh
-go run ./cmd/go-file-arch -config .go-file-arch.yml ./...
+go install github.com/cavos-io/go-file-arch/cmd/go-file-arch@v0.0.1
 ```
 
-The pre-commit hook runs the same command with `language: system` and `pass_filenames: false`.
+Private repo, so set `GOPRIVATE=github.com/cavos-io/*` and a git token first (the `goget.sh` helper in consuming apps does this). Then the binary is on `$GOBIN`/`PATH`. To wire it into another Go app, add the install line to that app's `make install` target and drop a pre-commit hook (see below).
+
+## Usage
+
+```sh
+# Explicit config (short or long flag)
+go-file-arch -c .go-file-arch.yml ./...
+go-file-arch --config .go-file-arch.yml ./...
+
+# No -c: auto-discovers .go-file-arch.yml or .go-file-arch.yaml in the current directory
+go-file-arch ./...
+
+# Show help
+go-file-arch -h
+```
+
+Flags:
+
+| Short | Long | Meaning |
+|-------|------|---------|
+| `-c` | `--config` | path to the `go-file-arch` YAML config |
+| `-a` | `--arch-lint-config` | optional `go-arch-lint` YAML config to run alongside |
+| `-h` | `--help` | show usage |
+
+When `-c` is omitted, the tool looks for `.go-file-arch.yml` then `.go-file-arch.yaml` in the current directory. If neither exists it exits with `config not found`. The `-arch-lint-config` file is **never** auto-discovered — it stays opt-in and only runs when passed explicitly.
+
+Exit codes: `0` no violations, `1` violations found or an error occurred.
+
+The pre-commit hook runs the same command with `language: system` and `pass_filenames: false`:
+
+```yaml
+repos:
+  - repo: local
+    hooks:
+      - id: go-file-arch
+        name: Go file architecture rules
+        entry: go-file-arch -config .go-file-arch.yml ./...
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        types:
+          - go
+```
 
 The root `.go-file-arch.yml` dogfoods this repository with `cmd/**` and `filearch/**` components. Layered application examples are shown below and in test fixtures.
 
 To run copied `go-arch-lint` checks alongside `contentRules` and `fileNameRules`, pass a go-arch-lint config too:
 
 ```sh
-go run ./cmd/go-file-arch -config .go-file-arch.yml -arch-lint-config .go-arch-lint.yml ./...
+go-file-arch -c .go-file-arch.yml -a .go-arch-lint.yml ./...
 ```
 
 The library also exposes `CheckArchLint` for structured check results and `RunArchLintCLI` for copied go-arch-lint CLI commands such as `check`, `mapping`, `graph`, `schema`, `version`, and `selfInspect`.
 
 ## Config
 
-The YAML format is versioned and has three main sections:
+The YAML format is versioned (`version: 1`) and has five sections:
 
 - `components`: named package/file areas.
+- `commonComponents`: components every other component may import without listing them.
 - `dependencyRules`: component dependency policy for local imports.
 - `contentRules`: AST declaration rules enforced by the analyzer.
 - `fileNameRules`: file name rules that may be triggered by file-level or declaration-level conditions.
