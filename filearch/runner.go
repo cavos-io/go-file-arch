@@ -7,12 +7,15 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
 	"golang.org/x/tools/go/packages"
 )
+
+var defaultConfigNames = []string{".go-file-arch.yml", ".go-file-arch.yaml"}
 
 type Options struct {
 	ConfigPath         string
@@ -23,7 +26,11 @@ type Options struct {
 
 func Run(ctx context.Context, opts Options) error {
 	if opts.ConfigPath == "" {
-		return errors.New("missing config path")
+		discovered, err := discoverConfigPath(opts.Workdir)
+		if err != nil {
+			return err
+		}
+		opts.ConfigPath = discovered
 	}
 
 	cfg, err := LoadConfig(opts.ConfigPath)
@@ -104,6 +111,19 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return errors.New(strings.Join(messages, "\n"))
+}
+
+func discoverConfigPath(dir string) (string, error) {
+	if dir == "" {
+		dir = "."
+	}
+	for _, name := range defaultConfigNames {
+		path := filepath.Join(dir, name)
+		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			return path, nil
+		}
+	}
+	return "", fmt.Errorf("config not found: set -c/--config or add %s to %q", strings.Join(defaultConfigNames, " or "), dir)
 }
 
 func archLintHasFindings(result ArchLintCheckResult) bool {
