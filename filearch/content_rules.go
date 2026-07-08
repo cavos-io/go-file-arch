@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strconv"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -38,13 +40,14 @@ func (cfg *Config) validateContentRules() error {
 
 func checkContentRule(pass *analysis.Pass, file *ast.File, rule ContentRule) {
 	for _, spec := range file.Imports {
-		reportIfContentViolation(pass, rule, "import", spec.Pos())
+		path, _ := strconv.Unquote(spec.Path.Value)
+		reportIfContentViolation(pass, rule, "import", path, spec.Pos())
 	}
 
 	for _, decl := range file.Decls {
 		switch decl := decl.(type) {
 		case *ast.FuncDecl:
-			reportIfContentViolation(pass, rule, "func", decl.Pos())
+			reportIfContentViolation(pass, rule, "func", funcDeclName(decl), decl.Pos())
 		case *ast.GenDecl:
 			checkGenDecl(pass, rule, decl)
 		}
@@ -56,15 +59,46 @@ func checkGenDecl(pass *analysis.Pass, rule ContentRule, decl *ast.GenDecl) {
 	case token.IMPORT:
 		return
 	case token.CONST:
-		reportIfContentViolation(pass, rule, "const", decl.Pos())
+		reportIfContentViolation(pass, rule, "const", valueSpecNames(decl), decl.Pos())
 	case token.VAR:
-		reportIfContentViolation(pass, rule, "var", decl.Pos())
+		reportIfContentViolation(pass, rule, "var", valueSpecNames(decl), decl.Pos())
 	case token.TYPE:
 		for _, spec := range decl.Specs {
 			typeSpec := spec.(*ast.TypeSpec)
-			reportIfContentViolation(pass, rule, declarationKind(typeSpec), typeSpec.Pos())
+			reportIfContentViolation(pass, rule, declarationKind(typeSpec), typeSpec.Name.Name, typeSpec.Pos())
 		}
 	}
+}
+
+// funcDeclName renders a method as "Receiver.Method" and a plain func as its name.
+func funcDeclName(decl *ast.FuncDecl) string {
+	if decl.Recv != nil && len(decl.Recv.List) > 0 {
+		return receiverTypeName(decl.Recv.List[0].Type) + "." + decl.Name.Name
+	}
+	return decl.Name.Name
+}
+
+func receiverTypeName(expr ast.Expr) string {
+	switch t := expr.(type) {
+	case *ast.StarExpr:
+		return receiverTypeName(t.X)
+	case *ast.Ident:
+		return t.Name
+	default:
+		return ""
+	}
+}
+
+func valueSpecNames(decl *ast.GenDecl) string {
+	var names []string
+	for _, spec := range decl.Specs {
+		if valueSpec, ok := spec.(*ast.ValueSpec); ok {
+			for _, name := range valueSpec.Names {
+				names = append(names, name.Name)
+			}
+		}
+	}
+	return strings.Join(names, ", ")
 }
 
 func declarationKind(spec *ast.TypeSpec) string {
@@ -78,7 +112,7 @@ func declarationKind(spec *ast.TypeSpec) string {
 	}
 }
 
-func reportIfContentViolation(pass *analysis.Pass, rule ContentRule, kind string, pos token.Pos) {
+func reportIfContentViolation(pass *analysis.Pass, rule ContentRule, kind, name string, pos token.Pos) {
 	if kind == "package" || kind == "import" {
 		if !contains(rule.Deny.Declarations, kind) {
 			return
@@ -92,7 +126,27 @@ func reportIfContentViolation(pass *analysis.Pass, rule ContentRule, kind string
 		return
 	}
 
-	pass.Reportf(pos, "[%s]: %s detected declaration kind: %s", rule.ID, rule.Message, kind)
+	reason := contentViolationReason(rule, kind, denied)
+	pass.Reportf(pos, "[%s]: %s Found disallowed %s%s%s.", rule.ID, rule.Message, kind, quotedName(name), reason)
+}
+
+// contentViolationReason explains why the declaration is rejected: an explicit
+// deny, or absence from a non-empty allow list.
+func contentViolationReason(rule ContentRule, kind string, denied bool) string {
+	if denied {
+		return fmt.Sprintf(" (%s declarations are denied here)", kind)
+	}
+	if len(rule.Allow.Declarations) > 0 {
+		return fmt.Sprintf(" (only %s allowed here)", strings.Join(rule.Allow.Declarations, ", "))
+	}
+	return ""
+}
+
+func quotedName(name string) string {
+	if name == "" {
+		return ""
+	}
+	return " " + strconv.Quote(name)
 }
 
 func ruleAppliesToPath(rule ContentRule, paths []string) bool {

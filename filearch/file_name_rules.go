@@ -81,13 +81,18 @@ func checkFileNameRule(pass *analysis.Pass, file *ast.File, filename string, rul
 	}
 
 	for _, trigger := range triggers {
-		pass.Reportf(trigger.pos, "[%s]: %s file name %q %s; detected declaration kind: %s", rule.ID, rule.Message, baseName, violation, trigger.kind)
+		if trigger.name != "" {
+			pass.Reportf(trigger.pos, "[%s]: %s File %q %s (triggered by %s %q).", rule.ID, rule.Message, baseName, violation, trigger.kind, trigger.name)
+			continue
+		}
+		pass.Reportf(trigger.pos, "[%s]: %s File %q %s.", rule.ID, rule.Message, baseName, violation)
 	}
 }
 
 type fileNameRuleTrigger struct {
 	pos  token.Pos
 	kind string
+	name string
 }
 
 func fileNameRuleTriggers(file *ast.File, rule FileNameRule) []fileNameRuleTrigger {
@@ -102,18 +107,18 @@ func fileNameRuleTriggers(file *ast.File, rule FileNameRule) []fileNameRuleTrigg
 			if matchesWhenDeclaration(rule, "func") &&
 				len(rule.When.TypeNameRegex) == 0 &&
 				matchesFuncNameRegex(rule, decl.Name.Name) {
-				triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "func"})
+				triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "func", name: funcDeclName(decl)})
 			}
 		case *ast.GenDecl:
 			switch decl.Tok {
 			case token.CONST:
 				if matchesWhenDeclaration(rule, "const") && len(rule.When.TypeNameRegex) == 0 {
-					triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "const"})
+					triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "const", name: valueSpecNames(decl)})
 				}
 				continue
 			case token.VAR:
 				if matchesWhenDeclaration(rule, "var") && len(rule.When.TypeNameRegex) == 0 {
-					triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "var"})
+					triggers = append(triggers, fileNameRuleTrigger{pos: decl.Pos(), kind: "var", name: valueSpecNames(decl)})
 				}
 				continue
 			case token.IMPORT:
@@ -131,7 +136,7 @@ func fileNameRuleTriggers(file *ast.File, rule FileNameRule) []fileNameRuleTrigg
 				if !matchesTypeNameRegex(rule, typeSpec.Name.Name) {
 					continue
 				}
-				triggers = append(triggers, fileNameRuleTrigger{pos: typeSpec.Pos(), kind: kind})
+				triggers = append(triggers, fileNameRuleTrigger{pos: typeSpec.Pos(), kind: kind, name: typeSpec.Name.Name})
 			}
 		}
 	}

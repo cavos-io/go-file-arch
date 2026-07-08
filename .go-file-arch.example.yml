@@ -1,0 +1,155 @@
+# Full reference config for go-file-arch. Every section and field is shown with
+# a short description. Copy the parts you need into .go-file-arch.yml.
+
+# Schema version. Required. Must be 1.
+version: 1
+
+# Optional. When set, all path patterns below are matched relative to this
+# subdirectory (relative to the config file's location). Omit for repo root.
+workdir: .
+
+# ============================================
+# Components
+# ============================================
+# Named areas of the codebase, each bound to one or more directory globs.
+# Glob supports ** across path segments. Every pattern must match at least one
+# existing directory or the config fails to load. When a path matches several
+# components, the most specific one wins (longer literal prefix, more literal
+# characters, fewer wildcards, then longer pattern).
+components:
+  cmd:
+    in:
+      - cmd/**
+  interface:
+    in:
+      - interface/**
+  core:
+    in:
+      - core/**
+  adapter:
+    in:
+      - adapter/**
+  library:
+    in:
+      - library/**
+
+# ============================================
+# Common Components
+# ============================================
+# Components every other component may import without listing them in each
+# mayDependOn. Use for shared infra (logging, config, helpers). Each entry must
+# be a defined component.
+commonComponents:
+  - library
+
+# ============================================
+# Dependency Rules
+# ============================================
+# Import boundaries between components, enforced for local imports only
+# (third-party imports are ignored). A file in component X may import component
+# Y only if Y is in X.mayDependOn or in commonComponents. Keys and values must
+# be defined components.
+dependencyRules:
+  cmd:
+    mayDependOn:
+      - cmd
+      - interface
+      - adapter
+      - core
+  interface:
+    mayDependOn:
+      - interface
+      - core
+  adapter:
+    mayDependOn:
+      - adapter
+      - core
+  core:
+    # core is the center: it may only depend on itself (+ commonComponents).
+    mayDependOn:
+      - core
+
+# ============================================
+# Content Rules
+# ============================================
+# Constrain which declaration kinds may appear in matched files, via the Go AST.
+# Valid kinds: interface, struct, func, var, const, type.
+# (package and import are allowed unless explicitly listed under deny.)
+contentRules:
+  - id: core-repository-interface-only # required, unique
+    files:
+      include: # required, at least one glob
+        - core/**/repository.go
+      exclude: # optional; wins over include
+        - "**/*_test.go"
+    allow:
+      # Whitelist: if set, any kind NOT listed here is reported.
+      declarations:
+        - interface
+    deny:
+      # Blacklist: listed kinds are reported if present.
+      declarations:
+        - struct
+        - func
+        - var
+        - const
+    message: "Repository contracts may only define interfaces; move implementations to adapter/**." # required
+
+# ============================================
+# File Name Rules
+# ============================================
+# Require or forbid file names, optionally only when the file declares certain
+# things. A rule reports only when it both triggers (when) and violates
+# (require/deny).
+fileNameRules:
+  # Example 1: ban generic file names everywhere (no `when` = every file).
+  - id: ban-generic-file-names
+    files:
+      include:
+        - "**/*.go"
+      exclude:
+        - "**/*_test.go"
+    deny:
+      fileName:
+        equalsAny:
+          - helper.go
+          - helpers.go
+          - common.go
+          - misc.go
+          - utils.go
+    message: "Avoid generic file names. Use a domain-specific name."
+
+  # Example 2: place declarations in the right file, triggered by declaration.
+  - id: service-structs-in-service-files
+    files:
+      include:
+        - core/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      # The rule only fires on files containing a matching declaration.
+      # Empty `when` = applies to every matched file (trigger kind "file").
+      declarations: # restrict to these kinds
+        - struct
+      typeNameRegex: # for type/struct/interface: name must match
+        - "Service$"
+      funcNameRegex: # for func: name must match
+        - "^New.*Service$"
+    require:
+      # Filename MUST satisfy at least one matcher below, else violation.
+      fileName:
+        equals: service.go # exact match
+        equalsAny: # any exact match
+          - service.go
+          - services.go
+        matches: # any Go regex match
+          - ".*_service\\.go$"
+        prefix: svc_ # filename starts with
+        suffix: _service.go # filename ends with
+    deny:
+      # Filename MUST NOT satisfy any matcher below, else violation.
+      # Same matcher fields as require (equals / equalsAny / matches / prefix / suffix).
+      fileName:
+        equalsAny:
+          - service_impl.go
+    message: "Service declarations must live in service.go or *_service.go."

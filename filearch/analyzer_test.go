@@ -91,7 +91,7 @@ func TestAnalyzerRejectsStructInCoreUserRepository(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/repository.go": `package user
 
-type RepositoryData struct { // want ` + "`\\[core-repository-interface-only\\]: core repository files may only define interfaces\\. Move implementations to adapter/\\*\\*\\. detected declaration kind: struct` `\\[core-no-struct-outside-model\\]: Structs in core should live under core/\\*\\*/model/\\*\\*\\. detected declaration kind: struct`" + `
+type RepositoryData struct { // want ` + "`\\[core-repository-interface-only\\]: core repository files may only define interfaces\\. Move implementations to adapter/\\*\\*\\. Found disallowed struct \"RepositoryData\" \\(struct declarations are denied here\\)\\.` `\\[core-no-struct-outside-model\\]: Structs in core should live under core/\\*\\*/model/\\*\\*\\. Found disallowed struct \"RepositoryData\" \\(struct declarations are denied here\\)\\.`" + `
 	ID string
 }
 `,
@@ -109,7 +109,7 @@ func TestAnalyzerRejectsFuncInCoreUserRepository(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/repository.go": `package user
 
-func NewRepository() string { // want ` + "`\\[core-repository-interface-only\\]: core repository files may only define interfaces\\. Move implementations to adapter/\\*\\*\\. detected declaration kind: func`" + `
+func NewRepository() string { // want ` + "`\\[core-repository-interface-only\\]: core repository files may only define interfaces\\. Move implementations to adapter/\\*\\*\\. Found disallowed func \"NewRepository\" \\(func declarations are denied here\\)\\.`" + `
 	return "repository"
 }
 `,
@@ -125,7 +125,7 @@ func NewRepository() string { // want ` + "`\\[core-repository-interface-only\\]
 
 func TestAnalyzerReportsFileLevelFileNameRule(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
-		"interface/http/user.go": `package http // want ` + "`\\[dto-files-only\\]: interface Go files must be named dto files\\. file name \"user\\.go\" does not satisfy required fileName condition; detected declaration kind: file`" + `
+		"interface/http/user.go": `package http // want ` + "`\\[dto-files-only\\]: interface Go files must be named dto files\\. File \"user\\.go\" does not satisfy required fileName condition\\.`" + `
 
 func HandleUser() {}
 `,
