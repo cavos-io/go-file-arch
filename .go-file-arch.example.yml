@@ -1,0 +1,177 @@
+# Full reference config for go-file-arch, modeled on Clean Architecture.
+# Copy the parts you need into .go-file-arch.yml.
+
+# Schema version. Required. Must be 1.
+version: 1
+
+# Optional. When set, all path patterns below are matched relative to this
+# subdirectory (relative to the config file's location). Omit for repo root.
+workdir: .
+
+# ============================================
+# Components
+# ============================================
+# Clean Architecture layers, outermost to innermost. Glob supports ** across
+# path segments. Every pattern must match at least one existing directory or
+# the config fails to load. When a path matches several components, the most
+# specific one wins (longer literal prefix, more literal characters, fewer
+# wildcards, then longer pattern).
+components:
+  cmd:
+    in:
+      - cmd/**
+  infrastructure:
+    in:
+      - infrastructure/**
+  interfaceadapter:
+    in:
+      - interface/**
+  usecase:
+    in:
+      - usecase/**
+  entity:
+    in:
+      - entity/**
+  shared:
+    in:
+      - shared/**
+
+# ============================================
+# Common Components
+# ============================================
+# Components every other component may import without listing them in each
+# mayDependOn. Use for shared infra (logging, config, helpers). Each entry
+# must be a defined component.
+commonComponents:
+  - shared
+
+# ============================================
+# Dependency Rules
+# ============================================
+# The Dependency Rule: source code dependencies may only point inward.
+# entity depends on nothing; usecase depends on entity; interface adapters
+# depend on usecase and entity; infrastructure (frameworks & drivers) depends
+# on interface adapters, usecase, and entity; cmd wires everything together.
+# Enforced for local imports only (third-party imports are ignored).
+dependencyRules:
+  cmd:
+    mayDependOn:
+      - cmd
+      - infrastructure
+      - interfaceadapter
+      - usecase
+      - entity
+  infrastructure:
+    mayDependOn:
+      - infrastructure
+      - interfaceadapter
+      - usecase
+      - entity
+  interfaceadapter:
+    mayDependOn:
+      - interfaceadapter
+      - usecase
+      - entity
+  usecase:
+    mayDependOn:
+      - usecase
+      - entity
+  entity:
+    # entity is the center: it may only depend on itself (+ commonComponents).
+    mayDependOn:
+      - entity
+
+# ============================================
+# Content Rules
+# ============================================
+# Constrain which declaration kinds may appear in matched files, via the Go
+# AST. Valid kinds: interface, struct, func, var, const, type.
+# (package and import are allowed unless explicitly listed under deny.)
+contentRules:
+  - id: usecase-port-interface-only # required, unique
+    files:
+      include: # required, at least one glob
+        - usecase/**/port.go
+      exclude: # optional; wins over include
+        - "**/*_test.go"
+    allow:
+      # Whitelist: if set, any kind NOT listed here is reported.
+      declarations:
+        - interface
+    deny:
+      # Blacklist: listed kinds are reported if present.
+      declarations:
+        - struct
+        - func
+        - var
+        - const
+    message: "Ports define interfaces only; implement them in infrastructure/**." # required
+
+  - id: entity-no-behavior-funcs
+    files:
+      include:
+        - entity/**/*.go
+      exclude:
+        - "**/*_test.go"
+    deny:
+      declarations:
+        - func
+    message: "Entities hold data and invariants, not orchestration; move logic to usecase/**."
+
+# ============================================
+# File Name Rules
+# ============================================
+# Require or forbid file names, optionally only when the file declares
+# certain things. A rule reports only when it both triggers (when) and
+# violates (require/deny).
+fileNameRules:
+  # Example 1: ban generic file names everywhere (no `when` = every file).
+  - id: ban-generic-file-names
+    files:
+      include:
+        - "**/*.go"
+      exclude:
+        - "**/*_test.go"
+    deny:
+      fileName:
+        equalsAny:
+          - helper.go
+          - helpers.go
+          - common.go
+          - misc.go
+          - utils.go
+    message: "Avoid generic file names. Use a domain-specific name."
+
+  # Example 2: place declarations in the right file, triggered by declaration.
+  - id: usecase-interactors-in-usecase-files
+    files:
+      include:
+        - usecase/**/*.go
+      exclude:
+        - "**/*_test.go"
+    when:
+      # The rule only fires on files containing a matching declaration.
+      # Empty `when` = applies to every matched file (trigger kind "file").
+      declarations: # restrict to these kinds
+        - struct
+      typeNameRegex: # for type/struct/interface: name must match
+        - "Interactor$"
+      funcNameRegex: # for func: name must match
+        - "^New.*Interactor$"
+    require:
+      # Filename MUST satisfy at least one matcher below, else violation.
+      fileName:
+        equals: usecase.go # exact match
+        equalsAny: # any exact match
+          - usecase.go
+          - interactor.go
+        matches: # any Go regex match
+          - ".*_usecase\\.go$"
+        suffix: _usecase.go # filename ends with
+    deny:
+      # Filename MUST NOT satisfy any matcher below, else violation.
+      # Same matcher fields as require (equals / equalsAny / matches / prefix / suffix).
+      fileName:
+        equalsAny:
+          - usecase_impl.go
+    message: "Interactors must live in usecase.go, interactor.go, or *_usecase.go."
