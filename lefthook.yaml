@@ -1,0 +1,22 @@
+lefthook: go tool lefthook
+
+pre-commit:
+  parallel: true
+  jobs:
+    - name: go build
+      run: go build ./...
+
+    - name: architecture
+      run: go tool go-file-arch -config .go-file-arch.yml ./...
+
+    - name: secrets
+      run: go tool gitleaks git --pre-commit --redact --staged --verbose
+
+pre-push:
+  parallel: true
+  jobs:
+    - name: go test
+      run: go test ./...
+
+    - name: go vet
+      run: go vet ./...

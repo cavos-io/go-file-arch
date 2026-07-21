@@ -10,7 +10,7 @@ For now, it complements `go-arch-lint`. Do not remove `go-arch-lint` until `go-f
 go install github.com/cavos-io/go-file-arch/cmd/go-file-arch@v0.0.1
 ```
 
-Private repo, so set `GOPRIVATE=github.com/cavos-io/*` and a git token first (the `goget.sh` helper in consuming apps does this). Then the binary is on `$GOBIN`/`PATH`. To wire it into another Go app, add the install line to that app's `make install` target and drop a pre-commit hook (see below).
+Private repo, so set `GOPRIVATE=github.com/cavos-io/*` and a git token first (the `goget.sh` helper in consuming apps does this). Then the binary is on `$GOBIN`/`PATH`. To wire it into another Go app, add the install line to that app's `make install` target and configure its architecture rules.
 
 ## Usage
 
@@ -38,21 +38,22 @@ When `-c` is omitted, the tool looks for `.go-file-arch.yml` then `.go-file-arch
 
 Exit codes: `0` no violations, `1` violations found or an error occurred.
 
-The pre-commit hook runs the same command with `language: system` and `pass_filenames: false`:
+Git hooks are managed by Lefthook. Install them after cloning:
 
-```yaml
-repos:
-  - repo: local
-    hooks:
-      - id: go-file-arch
-        name: Go file architecture rules
-        entry: go-file-arch -config .go-file-arch.yml ./...
-        language: system
-        pass_filenames: false
-        stages: [pre-commit]
-        types:
-          - go
+```sh
+go tool lefthook install
 ```
+
+The pre-commit hook builds the repository, checks architecture rules with repository-wide context, and scans staged changes with Gitleaks. The pre-push hook runs tests and `go vet`.
+
+Run either stage manually with:
+
+```sh
+go tool lefthook run pre-commit
+go tool lefthook run pre-push
+```
+
+Do not bypass the hooks with `--no-verify`.
 
 The root `.go-file-arch.yml` dogfoods this repository with `cmd/**` and `filearch/**` components. Layered application examples are shown below and in test fixtures.
 
