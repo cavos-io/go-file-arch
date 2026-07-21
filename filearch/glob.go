@@ -1,9 +1,29 @@
 package filearch
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 )
+
+func validateRelativeGlob(pattern string) error {
+	pattern = filepath.ToSlash(pattern)
+	if pattern == "" || strings.HasPrefix(pattern, "/") {
+		return fmt.Errorf("glob must be a non-empty relative path")
+	}
+	for _, segment := range strings.Split(pattern, "/") {
+		if segment == ".." {
+			return fmt.Errorf("glob must not escape its base directory")
+		}
+		if segment == "**" {
+			continue
+		}
+		if _, err := filepath.Match(segment, "candidate"); err != nil {
+			return fmt.Errorf("invalid glob %q: %w", pattern, err)
+		}
+	}
+	return nil
+}
 
 func MatchesAnyGlob(path string, patterns []string) bool {
 	path = filepath.ToSlash(path)

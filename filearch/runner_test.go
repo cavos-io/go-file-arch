@@ -99,3 +99,33 @@ const Name = "adapter"
 		t.Fatalf("Run() error = %v, want go-arch-lint violation", err)
 	}
 }
+
+func TestRunReportsMissingSiblingFile(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/contracts\n\ngo 1.25\n")
+	writeFile(t, dir, ".go-file-arch.yml", `
+version: 1
+fileContractRules:
+  - id: feature-contract
+    files:
+      include: [modules/*/feature.go]
+    require:
+      siblingFiles: [feature_test.go]
+    message: feature contract
+`)
+	writeFile(t, dir, "modules/one/feature.go", "package one\n")
+
+	err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(dir, ".go-file-arch.yml"),
+		Workdir:    dir,
+		Patterns:   []string{"./..."},
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil, want missing sibling violation")
+	}
+	for _, want := range []string{"modules/one/feature.go", "feature-contract", "required sibling file not found: feature_test.go"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run() error = %v, want %q", err, want)
+		}
+	}
+}

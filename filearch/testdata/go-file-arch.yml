@@ -134,6 +134,38 @@ contentRules:
         - interface
     message: "Adapter repository files should contain concrete implementations, not interfaces."
 
+directoryRules:
+  - id: package-metadata
+    directories:
+      include:
+        - modules/*
+    require:
+      files:
+        - metadata.go
+      anyFiles:
+        - feature.go
+        - alternate.go
+    message: "Module packages require metadata and a feature file."
+
+fileContractRules:
+  - id: feature-contract
+    files:
+      include:
+        - modules/*/feature.go
+    require:
+      siblingFiles:
+        - feature_test.go
+      declarations:
+        - kind: struct
+          name: Feature
+        - kind: func
+          name: NewFeature
+    deny:
+      declarations:
+        - kind: interface
+          exported: true
+    message: "Feature files must satisfy the configured contract."
+
 fileNameRules:
   - id: ban-generic-file-names
     files:

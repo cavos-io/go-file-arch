@@ -37,10 +37,10 @@ func run(pass *analysis.Pass) (any, error) {
 		return nil, err
 	}
 
-	return runWithConfig(pass, cfg)
+	return runWithConfig(pass, cfg, nil)
 }
 
-func runWithConfig(pass *analysis.Pass, cfg *Config) (any, error) {
+func runWithConfig(pass *analysis.Pass, cfg *Config, inventory *repositoryInventory) (any, error) {
 	for _, file := range pass.Files {
 		filename := pass.Fset.Position(file.Pos()).Filename
 		paths := pathCandidates(filename, cfg)
@@ -56,6 +56,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config) (any, error) {
 			}
 			checkFileNameRule(pass, file, filename, rule)
 		}
+		checkFileContractRules(pass, file, filename, cfg, inventory)
 		checkDependencyRules(pass, file, cfg, paths)
 	}
 

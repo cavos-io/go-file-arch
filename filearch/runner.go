@@ -9,6 +9,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"golang.org/x/tools/go/analysis"
@@ -37,6 +38,10 @@ func Run(ctx context.Context, opts Options) error {
 	if err != nil {
 		return err
 	}
+	inventory, err := newRepositoryInventory(cfg.workdirAbs)
+	if err != nil {
+		return err
+	}
 
 	patterns := opts.Patterns
 	if len(patterns) == 0 {
@@ -57,7 +62,7 @@ func Run(ctx context.Context, opts Options) error {
 		return errors.New("package loading failed")
 	}
 
-	var diagnostics []analysis.Diagnostic
+	diagnostics := checkDirectoryRules(cfg, inventory)
 	for _, pkg := range pkgs {
 		files, err := parsePackageFiles(fset, pkg.GoFiles)
 		if err != nil {
@@ -68,21 +73,31 @@ func Run(ctx context.Context, opts Options) error {
 			Fset:     fset,
 			Files:    files,
 			Report: func(d analysis.Diagnostic) {
-				diagnostics = append(diagnostics, d)
+				pos := fset.Position(d.Pos)
+				diagnostics = append(diagnostics, ruleDiagnostic{
+					Path:    diagnosticPath(pos.Filename, cfg),
+					Line:    pos.Line,
+					Column:  pos.Column,
+					Message: d.Message,
+				})
 			},
 		}
-		if _, err := runWithConfig(pass, cfg); err != nil {
+		if _, err := runWithConfig(pass, cfg, inventory); err != nil {
 			return err
 		}
 	}
 
 	var messages []string
 	if len(diagnostics) > 0 {
+		sortRuleDiagnostics(diagnostics)
 		var b strings.Builder
 		fmt.Fprintf(&b, "%d architecture violation(s):", len(diagnostics))
 		for _, diagnostic := range diagnostics {
-			pos := fset.Position(diagnostic.Pos)
-			fmt.Fprintf(&b, "\n%s: %s", pos, diagnostic.Message)
+			message := diagnostic.Message
+			if diagnostic.RuleID != "" {
+				message = fmt.Sprintf("[%s]: %s", diagnostic.RuleID, message)
+			}
+			fmt.Fprintf(&b, "\n%s:%d:%d: %s", diagnostic.Path, diagnostic.Line, diagnostic.Column, message)
 		}
 		messages = append(messages, b.String())
 	}
@@ -111,6 +126,32 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return errors.New(strings.Join(messages, "\n"))
+}
+
+func diagnosticPath(filename string, cfg *Config) string {
+	if rel, err := filepath.Rel(cfg.workdirAbs, filename); err == nil && rel != "." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return filepath.ToSlash(rel)
+	}
+	return filepath.ToSlash(filename)
+}
+
+func sortRuleDiagnostics(diagnostics []ruleDiagnostic) {
+	sort.SliceStable(diagnostics, func(i, j int) bool {
+		a, b := diagnostics[i], diagnostics[j]
+		if a.Path != b.Path {
+			return a.Path < b.Path
+		}
+		if a.Line != b.Line {
+			return a.Line < b.Line
+		}
+		if a.Column != b.Column {
+			return a.Column < b.Column
+		}
+		if a.RuleID != b.RuleID {
+			return a.RuleID < b.RuleID
+		}
+		return a.Message < b.Message
+	})
 }
 
 func discoverConfigPath(dir string) (string, error) {

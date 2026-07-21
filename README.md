@@ -66,15 +66,17 @@ The library also exposes `CheckArchLint` for structured check results and `RunAr
 
 ## Config
 
-The YAML format is versioned (`version: 1`) and has five sections:
+The YAML format is versioned (`version: 1`) and has seven sections:
 
 - `components`: named package/file areas.
 - `commonComponents`: components every other component may import without listing them.
 - `dependencyRules`: component dependency policy for local imports.
 - `contentRules`: AST declaration rules enforced by the analyzer.
 - `fileNameRules`: file name rules that may be triggered by file-level or declaration-level conditions.
+- `directoryRules`: required files within every matched directory.
+- `fileContractRules`: sibling-file and declaration contracts for matched Go files.
 
-`workdir` is optional. When set, component, content, file-name, and dependency path matching are relative to that directory.
+`workdir` is optional. When set, all repository path matching is relative to that directory.
 
 Example content rule:
 
@@ -134,6 +136,81 @@ fileNameRules:
 
 Supported file name matchers are `equals`, `equalsAny`, `matches`, `prefix`, and `suffix`. `require.fileName` means at least one configured matcher must match. `deny.fileName` means no configured matcher may match.
 
+## Directory Rules
+
+`directoryRules` checks every directory matched by `directories.include`. Exclusions take precedence. Every `require.files` entry must match a file relative to the directory, while `require.anyFiles` succeeds when at least one entry matches. Relative patterns support the same `**` glob syntax as other rules.
+
+```yaml
+directoryRules:
+  - id: module-file-contract
+    directories:
+      include:
+        - modules/*
+      exclude:
+        - modules/special_*
+    require:
+      files:
+        - metadata.go
+      anyFiles:
+        - feature.go
+        - alternate_feature.go
+        - features/*.go
+    message: "Module directories must contain metadata and at least one feature file."
+```
+
+## File Contract Rules
+
+`fileContractRules` checks each matched Go file. It can require sibling files and declarations, or deny declarations selected by kind, name, regular expression, exported state, function result, or constant literal value.
+
+```yaml
+fileContractRules:
+  - id: feature-file-contract
+    files:
+      include:
+        - modules/*/feature.go
+      exclude:
+        - "**/generated/**"
+    require:
+      siblingFiles:
+        - feature_test.go
+      declarations:
+        - kind: struct
+          name: Feature
+        - kind: func
+          name: NewFeature
+          returns:
+            contains:
+              - "*Feature"
+        - kind: const
+          name: FeatureVersion
+          value:
+            matches:
+              - "^v[0-9]+$"
+    deny:
+      declarations:
+        - kind: interface
+          exported: true
+        - kind: struct
+          nameMatches:
+            - "^Legacy"
+    message: "Feature files must satisfy the configured contract."
+```
+
+Supported selector fields are:
+
+- `kind`: `interface`, `struct`, `func`, `var`, `const`, or `type`.
+- `name`: exact declaration name.
+- `nameMatches`: at least one Go regular expression must match.
+- `nameNotMatches`: none of the Go regular expressions may match.
+- `exported`: optional boolean; omission accepts either visibility.
+- `returns.contains`: every listed syntactic function result type must occur.
+- `returns.matches`: at least one result type must match one configured regular expression.
+- `value.equals` and `value.matches`: compare normalized constant literals.
+
+Configured fields within one selector use AND semantics. Entries in each regex list use OR semantics. Function result matching is syntactic rather than type-aware. Constant checks accept string, rune, numeric, boolean, and imaginary literals; they do not evaluate expressions, identifiers, or `iota`.
+
+Repository-wide directory and sibling absence checks run through the CLI or `filearch.Run`. `NewAnalyzer` enforces declaration selectors but cannot coordinate repository-wide absence checks across independent package analysis passes.
+
 ## Dependency Rules
 
 `dependencyRules` are parsed, validated, and enforced for local imports that can be mapped to configured components. The loader validates that every rule key and every `mayDependOn` target names a configured component, and that each component `in` pattern matches at least one existing path under the config directory or `workdir`, so malformed policies fail early.
@@ -145,6 +222,9 @@ If multiple component globs match a path, `go-file-arch` chooses the most specif
 - Dependency rules ignore external imports and local imports that do not match any configured component.
 - Content rules inspect syntax only; they do not use type checking or semantic ownership rules.
 - File name rules use Go regular expressions and match only the base file name, not the full path.
+- Directory rules and sibling-file requirements require the CLI or `filearch.Run`; analyzer-only execution checks declarations but not absent paths.
+- File contract result types are matched syntactically, without type identity or assignability.
+- Constant value conditions match literal initializers only and do not evaluate expressions.
 - Type declarations are classified by AST shape: interfaces are `interface`, structs are `struct`, and other type declarations are `type`.
 - Rules report matching declarations independently, so one declaration may produce diagnostics from multiple rules.
 

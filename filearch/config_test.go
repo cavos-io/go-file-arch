@@ -146,6 +146,111 @@ fileNameRules:
 	}
 }
 
+func TestLoadConfigParsesRepositoryContractRules(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	err := os.WriteFile(path, []byte(`
+version: 1
+directoryRules:
+  - id: module-files
+    directories:
+      include: [modules/*]
+      exclude: [modules/ignored]
+    require:
+      files: [metadata.go]
+      anyFiles: [feature.go, features/*.go]
+    message: module files required
+fileContractRules:
+  - id: feature-contract
+    files:
+      include: [modules/*/feature.go]
+    require:
+      siblingFiles: [feature_test.go]
+      declarations:
+        - kind: func
+          name: NewFeature
+          exported: true
+          returns:
+            contains: ["*Feature"]
+    deny:
+      declarations:
+        - kind: interface
+          exported: true
+    message: feature contract required
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if got := cfg.DirectoryRules[0].Require.AnyFiles[1]; got != "features/*.go" {
+		t.Fatalf("anyFiles[1] = %q", got)
+	}
+	selector := cfg.FileContractRules[0].Require.Declarations[0]
+	if selector.Exported == nil || !*selector.Exported {
+		t.Fatalf("exported = %v, want true", selector.Exported)
+	}
+	if got := selector.Returns.Contains[0]; got != "*Feature" {
+		t.Fatalf("returns.contains[0] = %q", got)
+	}
+}
+
+func TestLoadConfigRejectsInvalidRepositoryContracts(t *testing.T) {
+	tests := []struct {
+		name string
+		yaml string
+		want string
+	}{
+		{
+			name: "empty directory rule",
+			yaml: "version: 1\ndirectoryRules:\n- id: bad\n  directories: {include: [modules/*]}\n  message: bad\n",
+			want: "must configure files or anyFiles",
+		},
+		{
+			name: "return on struct",
+			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  require:\n    declarations:\n    - kind: struct\n      returns: {contains: [Thing]}\n  message: bad\n",
+			want: "returns is only valid for func",
+		},
+		{
+			name: "value on func",
+			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  require:\n    declarations:\n    - kind: func\n      value: {matches: [x]}\n  message: bad\n",
+			want: "value is only valid for const",
+		},
+		{
+			name: "invalid regex",
+			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  deny:\n    declarations:\n    - kind: func\n      nameMatches: ['[']\n  message: bad\n",
+			want: "invalid nameMatches regex",
+		},
+		{
+			name: "escaping sibling",
+			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  require: {siblingFiles: [../secret.go]}\n  message: bad\n",
+			want: "must not escape",
+		},
+		{
+			name: "duplicate ID",
+			yaml: "version: 1\ncontentRules:\n- id: same\n  files: {include: ['**/*.go']}\n  deny: {declarations: [struct]}\n  message: one\nfileContractRules:\n- id: same\n  files: {include: ['**/*.go']}\n  deny: {declarations: [{kind: interface}]}\n  message: two\n",
+			want: "duplicate rule id",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "config.yml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			_, err := LoadConfig(path)
+			if err == nil || !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("LoadConfig() error = %v, want substring %q", err, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoadConfigRejectsMissingFile(t *testing.T) {
 	_, err := LoadConfig(filepath.Join(t.TempDir(), "missing.yml"))
 	if err == nil {

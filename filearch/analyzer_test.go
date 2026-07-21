@@ -54,6 +54,8 @@ func TestStrictFixtureReportsViolations(t *testing.T) {
 		"dto-structs-in-dto-files",
 		"handlers-in-handler-files",
 		"handler-methods-in-handler-files",
+		"package-metadata",
+		"feature-contract",
 	} {
 		if !strings.Contains(err.Error(), want) {
 			t.Fatalf("Run() error = %v, want %q", err, want)
@@ -154,6 +156,42 @@ fileNameRules:
 	}
 
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "interface/http")
+}
+
+func TestAnalyzerReportsFileContractDeclarations(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"modules/one/feature.go": `package one // want "\\[feature-contract\\].*required declaration not found: func NewFeature"
+
+type Client interface{} // want "\\[feature-contract\\].*denied declaration matched: exported interface Client"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+fileContractRules:
+  - id: feature-contract
+    files:
+      include: [modules/*/feature.go]
+    require:
+      declarations:
+        - kind: func
+          name: NewFeature
+    deny:
+      declarations:
+        - kind: interface
+          exported: true
+    message: feature contract
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "modules/one")
 }
 
 func TestAnalyzerReportsDependencyRuleViolation(t *testing.T) {

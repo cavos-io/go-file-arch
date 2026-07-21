@@ -10,13 +10,15 @@ import (
 )
 
 type Config struct {
-	Version          int                       `yaml:"version"`
-	Workdir          string                    `yaml:"workdir"`
-	Components       map[string]Component      `yaml:"components"`
-	CommonComponents []string                  `yaml:"commonComponents"`
-	DependencyRules  map[string]DependencyRule `yaml:"dependencyRules"`
-	ContentRules     []ContentRule             `yaml:"contentRules"`
-	FileNameRules    []FileNameRule            `yaml:"fileNameRules"`
+	Version           int                       `yaml:"version"`
+	Workdir           string                    `yaml:"workdir"`
+	Components        map[string]Component      `yaml:"components"`
+	CommonComponents  []string                  `yaml:"commonComponents"`
+	DependencyRules   map[string]DependencyRule `yaml:"dependencyRules"`
+	ContentRules      []ContentRule             `yaml:"contentRules"`
+	FileNameRules     []FileNameRule            `yaml:"fileNameRules"`
+	DirectoryRules    []DirectoryRule           `yaml:"directoryRules"`
+	FileContractRules []FileContractRule        `yaml:"fileContractRules"`
 
 	baseDir string
 
@@ -99,6 +101,44 @@ func (cfg *Config) validate() error {
 	}
 	if err := cfg.validateFileNameRules(); err != nil {
 		return err
+	}
+	if err := cfg.validateDirectoryRules(); err != nil {
+		return err
+	}
+	if err := cfg.validateFileContractRules(); err != nil {
+		return err
+	}
+	return cfg.validateUniqueRuleIDs()
+}
+
+func (cfg *Config) validateUniqueRuleIDs() error {
+	seen := make(map[string]bool)
+	check := func(id string) error {
+		if seen[id] {
+			return fmt.Errorf("duplicate rule id %q", id)
+		}
+		seen[id] = true
+		return nil
+	}
+	for _, rule := range cfg.ContentRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.FileNameRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.DirectoryRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.FileContractRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
 	}
 	return nil
 }

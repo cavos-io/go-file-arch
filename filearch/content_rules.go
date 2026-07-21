@@ -150,13 +150,5 @@ func quotedName(name string) string {
 }
 
 func ruleAppliesToPath(rule ContentRule, paths []string) bool {
-	if MatchesAnyPathGlob(paths, rule.Files.Exclude) {
-		return false
-	}
-	for _, path := range paths {
-		if MatchesAnyGlob(path, rule.Files.Include) {
-			return true
-		}
-	}
-	return false
+	return fileSetAppliesToPaths(rule.Files, paths)
 }
