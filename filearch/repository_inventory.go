@@ -22,6 +22,7 @@ func newRepositoryInventory(root string) (*repositoryInventory, error) {
 	inventory := &repositoryInventory{
 		root:  absRoot,
 		files: make(map[string]struct{}),
+		dirs:  []string{"."},
 	}
 	err = filepath.WalkDir(absRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -50,6 +51,45 @@ func newRepositoryInventory(root string) (*repositoryInventory, error) {
 	}
 	sort.Strings(inventory.dirs)
 	return inventory, nil
+}
+
+func (inventory *repositoryInventory) relativeEntries(baseDir, depth string) ([]string, []string) {
+	baseDir = strings.Trim(filepath.ToSlash(baseDir), "/")
+	if baseDir == "." {
+		baseDir = ""
+	}
+	relative := func(path string) (string, bool) {
+		if baseDir == "" {
+			return path, true
+		}
+		prefix := baseDir + "/"
+		if !strings.HasPrefix(path, prefix) {
+			return "", false
+		}
+		return strings.TrimPrefix(path, prefix), true
+	}
+	include := func(path string) bool {
+		return depth == "recursive" || !strings.Contains(path, "/")
+	}
+
+	var files []string
+	for file := range inventory.files {
+		if rel, ok := relative(file); ok && rel != "" && include(rel) {
+			files = append(files, rel)
+		}
+	}
+	var directories []string
+	for _, directory := range inventory.dirs {
+		if directory == "." || directory == baseDir {
+			continue
+		}
+		if rel, ok := relative(directory); ok && rel != "" && include(rel) {
+			directories = append(directories, rel)
+		}
+	}
+	sort.Strings(files)
+	sort.Strings(directories)
+	return files, directories
 }
 
 func (inventory *repositoryInventory) matchingDirectories(files FileSet) []string {

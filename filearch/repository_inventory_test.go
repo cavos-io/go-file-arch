@@ -3,9 +3,22 @@ package filearch
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+func TestRepositoryInventoryIncludesRoot(t *testing.T) {
+	inventory, err := newRepositoryInventory(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := inventory.matchingDirectories(FileSet{Include: []string{"."}})
+	if want := []string{"."}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("matchingDirectories() = %v, want %v", got, want)
+	}
+}
 
 func TestRepositoryInventoryQueriesRelativeFiles(t *testing.T) {
 	dir := t.TempDir()

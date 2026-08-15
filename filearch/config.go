@@ -49,22 +49,6 @@ type PathTemplate struct {
 	Captures map[string]string `yaml:"captures"`
 }
 
-type PathRule struct {
-	ID          string  `yaml:"id"`
-	Severity    string  `yaml:"severity"`
-	Directories FileSet `yaml:"directories"`
-	Depth       string  `yaml:"depth"`
-	Require     PathSet `yaml:"require"`
-	Allow       PathSet `yaml:"allow"`
-	Deny        PathSet `yaml:"deny"`
-	Message     string  `yaml:"message"`
-}
-
-type PathSet struct {
-	Files       []string `yaml:"files"`
-	Directories []string `yaml:"directories"`
-}
-
 type ImportRule struct {
 	ID       string           `yaml:"id"`
 	Severity string           `yaml:"severity"`
@@ -160,6 +144,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateFileContractRules(); err != nil {
+		return err
+	}
+	if err := cfg.validatePathRules(); err != nil {
 		return err
 	}
 	return cfg.validateUniqueRuleIDs()

@@ -63,6 +63,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	diagnostics := checkDirectoryRules(cfg, inventory)
+	diagnostics = append(diagnostics, checkPathRules(cfg, inventory)...)
 	for _, pkg := range pkgs {
 		files, err := parsePackageFiles(fset, pkg.GoFiles)
 		if err != nil {
