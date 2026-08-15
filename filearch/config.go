@@ -31,7 +31,8 @@ type Config struct {
 	workdir    string
 	workdirAbs string
 
-	componentDirs map[string][]componentDir
+	componentDirs     map[string][]componentDir
+	compiledTemplates map[string]compiledPathTemplate
 }
 
 type Component struct {
@@ -42,11 +43,6 @@ type Component struct {
 type ComponentOptions struct {
 	RequireMatch       bool `yaml:"requireMatch"`
 	RequireSingleMatch bool `yaml:"requireSingleMatch"`
-}
-
-type PathTemplate struct {
-	Pattern  string            `yaml:"pattern"`
-	Captures map[string]string `yaml:"captures"`
 }
 
 type ImportRule struct {
@@ -67,8 +63,9 @@ type ImportConditions struct {
 }
 
 type FileSet struct {
-	Include []string `yaml:"include"`
-	Exclude []string `yaml:"exclude"`
+	Include   []string `yaml:"include"`
+	Exclude   []string `yaml:"exclude"`
+	Templates []string `yaml:"templates"`
 }
 
 type DeclarationSet struct {
@@ -129,6 +126,9 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	if err := cfg.validateComponentOptions(); err != nil {
+		return err
+	}
+	if err := cfg.validateTemplates(); err != nil {
 		return err
 	}
 	if err := cfg.validateDependencyRules(); err != nil {

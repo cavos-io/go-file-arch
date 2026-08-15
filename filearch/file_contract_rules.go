@@ -31,37 +31,59 @@ func checkFileContractRules(pass *analysis.Pass, file *ast.File, filename string
 	paths := pathCandidates(filename, cfg)
 	candidates := extractDeclarationCandidates(pass.Fset, file)
 	for _, rule := range cfg.FileContractRules {
-		if !fileSetAppliesToPaths(rule.Files, paths) {
+		matches := cfg.matchFileSet(rule.Files, paths)
+		if len(matches) == 0 {
 			continue
 		}
-		if inventory != nil {
-			dir := filepath.ToSlash(filepath.Dir(relativeToWorkdir(filename, cfg)))
-			for _, sibling := range rule.Require.SiblingFiles {
-				if !inventory.hasRelativeFile(dir, sibling) {
-					pass.Reportf(file.Package, "[%s]: %s required sibling file not found: %s", rule.ID, rule.Message, sibling)
+		for _, match := range matches {
+			if inventory != nil {
+				dir := filepath.ToSlash(filepath.Dir(relativeToWorkdir(filename, cfg)))
+				for _, sibling := range rule.Require.SiblingFiles {
+					expanded, _ := expandTemplate(sibling, match.Captures)
+					if !inventory.hasRelativeFile(dir, expanded) {
+						pass.Reportf(file.Package, "[%s]: %s required sibling file not found: %s", rule.ID, rule.Message, expanded)
+					}
 				}
 			}
-		}
-		for _, selector := range rule.Require.Declarations {
-			if !anyDeclarationMatches(candidates, selector) {
-				pass.Reportf(file.Package, "[%s]: %s required declaration not found: %s", rule.ID, rule.Message, selectorDescription(selector))
+			for _, selector := range rule.Require.Declarations {
+				expanded := expandDeclarationSelector(selector, match.Captures)
+				if !anyDeclarationMatches(candidates, expanded) {
+					pass.Reportf(file.Package, "[%s]: %s required declaration not found: %s", rule.ID, rule.Message, selectorDescription(expanded))
+				}
 			}
-		}
-		seen := make(map[string]bool)
-		for _, selector := range rule.Deny.Declarations {
-			for _, candidate := range candidates {
-				if !declarationMatches(candidate, selector) {
-					continue
+			seen := make(map[string]bool)
+			for _, selector := range rule.Deny.Declarations {
+				expanded := expandDeclarationSelector(selector, match.Captures)
+				for _, candidate := range candidates {
+					if !declarationMatches(candidate, expanded) {
+						continue
+					}
+					key := fmt.Sprintf("%d:%s:%s", candidate.Pos, candidate.Kind, candidate.Name)
+					if seen[key] {
+						continue
+					}
+					seen[key] = true
+					pass.Reportf(candidate.Pos, "[%s]: %s denied declaration matched: %s", rule.ID, rule.Message, candidateDescription(candidate))
 				}
-				key := fmt.Sprintf("%d:%s:%s", candidate.Pos, candidate.Kind, candidate.Name)
-				if seen[key] {
-					continue
-				}
-				seen[key] = true
-				pass.Reportf(candidate.Pos, "[%s]: %s denied declaration matched: %s", rule.ID, rule.Message, candidateDescription(candidate))
 			}
 		}
 	}
+}
+
+func expandDeclarationSelector(selector DeclarationSelector, captures map[string]string) DeclarationSelector {
+	expanded := selector
+	expanded.Name, _ = expandTemplate(selector.Name, captures)
+	expanded.NameMatches = expandTemplateValues(selector.NameMatches, captures)
+	expanded.NameNotMatches = expandTemplateValues(selector.NameNotMatches, captures)
+	return expanded
+}
+
+func expandTemplateValues(values []string, captures map[string]string) []string {
+	expanded := make([]string, len(values))
+	for i, value := range values {
+		expanded[i], _ = expandTemplate(value, captures)
+	}
+	return expanded
 }
 
 func fileSetAppliesToPaths(files FileSet, paths []string) bool {
@@ -140,8 +162,26 @@ func (cfg *Config) validateFileContractRules() error {
 		if err := validateSeverity(rule.ID, rule.Severity); err != nil {
 			return err
 		}
-		if len(rule.Files.Include) == 0 {
+		if len(rule.Files.Include) == 0 && len(rule.Files.Templates) == 0 {
 			return fmt.Errorf("file contract rule %q must include at least one file pattern", rule.ID)
+		}
+		for _, name := range rule.Files.Templates {
+			compiled, ok := cfg.compiledTemplates[name]
+			if !ok {
+				return fmt.Errorf("file contract rule %q references undefined template %q", rule.ID, name)
+			}
+			captures := make(map[string]string, len(compiled.captures))
+			for _, capture := range compiled.captures {
+				captures[capture] = "example"
+			}
+			if err := validateFileContractExpansions(rule, captures); err != nil {
+				return err
+			}
+		}
+		if len(rule.Files.Include) > 0 {
+			if err := validateFileContractExpansions(rule, map[string]string{}); err != nil {
+				return err
+			}
 		}
 		if rule.Message == "" {
 			return fmt.Errorf("file contract rule %q message is required", rule.ID)
@@ -158,6 +198,25 @@ func (cfg *Config) validateFileContractRules() error {
 			if err := validateDeclarationSelector(rule.ID, selector); err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+func validateFileContractExpansions(rule FileContractRule, captures map[string]string) error {
+	values := append([]string{}, rule.Require.SiblingFiles...)
+	selectors := append(append([]DeclarationSelector{}, rule.Require.Declarations...), rule.Deny.Declarations...)
+	for _, selector := range selectors {
+		values = append(values, selector.Name)
+		values = append(values, selector.NameMatches...)
+		values = append(values, selector.NameNotMatches...)
+	}
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, err := expandTemplate(value, captures); err != nil {
+			return fmt.Errorf("file contract rule %q has invalid template expansion %q: %w", rule.ID, value, err)
 		}
 	}
 	return nil
