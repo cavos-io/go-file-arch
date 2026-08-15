@@ -14,6 +14,11 @@ func TestRunReturnsViolationError(t *testing.T) {
 	writeFile(t, dir, "go.mod", "module example.com/violation\n\ngo 1.25\n")
 	writeFile(t, dir, ".go-file-arch.yml", `
 version: 1
+componentOptions:
+  requireMatch: true
+components:
+  repository:
+    files: {include: ['**/*.go']}
 contentRules:
   - id: no-functions
     files: {include: ['**/*.go']}
@@ -41,12 +46,25 @@ contentRules:
     message: test functions are checked
 `)
 	writeFile(t, dir, "feature.go", "package tests\n")
-	writeFile(t, dir, "feature_test.go", "package tests\nimport \"testing\"\nfunc TestFeature(t *testing.T) {}\n")
+	writeFile(t, dir, "feature_test.go", "package tests\nimport \"testing\"\nfunc TestFeature(t *testing.T) {}\nfunc TestMain(m *testing.M) { m.Run() }\n")
 
 	err := Run(context.Background(), Options{ConfigPath: filepath.Join(dir, ".architecture.yaml"), Workdir: dir})
 	var violation *ViolationError
 	if !errors.As(err, &violation) || !strings.Contains(err.Error(), "feature_test.go") {
 		t.Fatalf("Run() error = %T %v, want test-file violation", err, err)
+	}
+	if strings.Contains(err.Error(), "/tmp/") || strings.Contains(err.Error(), "go-build") || strings.Contains(err.Error(), "gocache") {
+		t.Fatalf("Run() analyzed generated files outside workdir: %v", err)
+	}
+}
+
+func TestFileBelongsToWorkdir(t *testing.T) {
+	cfg := &Config{workdirAbs: filepath.Join(string(filepath.Separator), "repo")}
+	if !fileBelongsToWorkdir(filepath.Join(cfg.workdirAbs, "feature_test.go"), cfg) {
+		t.Fatal("repository test file was excluded")
+	}
+	if fileBelongsToWorkdir(filepath.Join(string(filepath.Separator), "tmp", "gocache", "generated-testmain"), cfg) {
+		t.Fatal("generated test-main cache file was included")
 	}
 }
 

@@ -75,6 +75,9 @@ func Run(ctx context.Context, opts Options) error {
 	for _, pkg := range pkgs {
 		var filenames []string
 		for _, filename := range pkg.GoFiles {
+			if !fileBelongsToWorkdir(filename, cfg) {
+				continue
+			}
 			if seenFiles[filename] {
 				continue
 			}
@@ -137,6 +140,17 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return &ViolationError{Message: strings.Join(messages, "\n")}
+}
+
+func fileBelongsToWorkdir(filename string, cfg *Config) bool {
+	if !filepath.IsAbs(filename) {
+		filename = filepath.Join(cfg.workdirAbs, filename)
+	}
+	relative, err := filepath.Rel(cfg.workdirAbs, filename)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func diagnosticPath(filename string, cfg *Config) string {
