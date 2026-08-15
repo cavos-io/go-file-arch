@@ -121,6 +121,52 @@ func (s *Service) Find(ctx context.Context, id uint64) (*User, error) { return n
 	}
 }
 
+func TestDeclarationSelectorMatchesStructFieldsAndTags(t *testing.T) {
+	fset := token.NewFileSet()
+	source := "package model\n" +
+		"import \"net/http\"\n" +
+		"type TaggedModel struct {\n" +
+		"Name string `json:\"name\" validate:\"required\"`\n" +
+		"Count int\n" +
+		"}\n" +
+		"type PlainModel struct { Name string }\n" +
+		"type EmbeddedModel struct { *PlainModel; http.Client }\n"
+	file, err := parser.ParseFile(fset, "model.go", source, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := extractDeclarationCandidates(fset, file)
+
+	tagged := DeclarationSelector{
+		Kind: "struct",
+		Fields: FieldCondition{Contains: []FieldSelector{{
+			Name: "Name", Type: "string", TagMatches: []string{`(^|\s)json:`},
+		}}},
+	}
+	if !anyDeclarationMatches(candidates, tagged) {
+		t.Fatalf("tagged selector did not match %#v", candidates)
+	}
+
+	allPlain := DeclarationSelector{
+		Kind: "struct", Name: "PlainModel",
+		Fields: FieldCondition{All: &FieldSelector{TagMatches: []string{`^$`}}},
+	}
+	if !anyDeclarationMatches(candidates, allPlain) {
+		t.Fatalf("plain selector did not match %#v", candidates)
+	}
+
+	embedded := DeclarationSelector{
+		Kind: "struct", Name: "EmbeddedModel",
+		Fields: FieldCondition{Contains: []FieldSelector{
+			{Name: "PlainModel", Type: "*PlainModel", Exported: testBoolPointer(true)},
+			{Name: "Client", Type: "http.Client", Exported: testBoolPointer(true)},
+		}},
+	}
+	if !anyDeclarationMatches(candidates, embedded) {
+		t.Fatalf("embedded selector did not match %#v", candidates)
+	}
+}
+
 func TestDeclarationExtractionNormalizesStructuralCandidates(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "repository.go", `package user
@@ -175,6 +221,7 @@ func TestDeclarationSelectorValidationRejectsInvalidStructure(t *testing.T) {
 		{DeclarationSelector{Kind: "func", Parameters: ParameterCondition{Count: CountCondition{Equals: testIntPointer(-1)}}}, "parameters.count values must be non-negative"},
 		{DeclarationSelector{Kind: "interface", Methods: MethodCondition{All: &FunctionCondition{NameMatches: []string{"["}}}}, "methods.all.nameMatches regex"},
 		{DeclarationSelector{Kind: "func", Returns: ReturnCondition{Contains: TypeConditionList{{TypeMatches: []string{"["}}}}}, "returns.typeConditions"},
+		{DeclarationSelector{Kind: "struct", Fields: FieldCondition{Contains: []FieldSelector{{TagMatches: []string{"["}}}}}, "fields.contains[0].tagMatches regex"},
 	}
 	for _, test := range tests {
 		err := validateDeclarationSelector("bad", test.selector)

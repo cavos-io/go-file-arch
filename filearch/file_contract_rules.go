@@ -98,6 +98,7 @@ func expandDeclarationSelectorChecked(selector DeclarationSelector, captures map
 	expanded.Parameters = expandParameterCondition(selector.Parameters, expand)
 	expanded.Returns = expandReturnCondition(selector.Returns, expand)
 	expanded.Embeds = expandEmbedCondition(selector.Embeds, expand)
+	expanded.Fields = expandFieldCondition(selector.Fields, expand)
 	expanded.Methods = expandMethodCondition(selector.Methods, expand)
 	if selector.Value.Equals != nil {
 		value := expand(*selector.Value.Equals)
@@ -156,6 +157,27 @@ func expandReturnCondition(condition ReturnCondition, expand func(string) string
 func expandEmbedCondition(condition EmbedCondition, expand func(string) string) EmbedCondition {
 	condition.Contains = expandTypeConditionList(condition.Contains, expand)
 	condition.All = expandOptionalTypeCondition(condition.All, expand)
+	return condition
+}
+
+func expandFieldSelector(selector FieldSelector, expand func(string) string) FieldSelector {
+	selector.Name = expand(selector.Name)
+	selector.NameMatches = expandTemplateValues(selector.NameMatches, expand)
+	selector.Type = expand(selector.Type)
+	selector.TypeMatches = expandTemplateValues(selector.TypeMatches, expand)
+	selector.TagMatches = expandTemplateValues(selector.TagMatches, expand)
+	return selector
+}
+
+func expandFieldCondition(condition FieldCondition, expand func(string) string) FieldCondition {
+	condition.Contains = append([]FieldSelector(nil), condition.Contains...)
+	for i, selector := range condition.Contains {
+		condition.Contains[i] = expandFieldSelector(selector, expand)
+	}
+	if condition.All != nil {
+		expanded := expandFieldSelector(*condition.All, expand)
+		condition.All = &expanded
+	}
 	return condition
 }
 

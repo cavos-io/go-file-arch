@@ -209,6 +209,7 @@ Declaration selectors support:
 | `receiver` | `present`, `pointer`, `type`, `typeMatches` |
 | `parameters` / `returns` | `count`, `first`, `contains`, `all` |
 | `embeds` | embedded struct or interface types |
+| `fields` | struct field `count`, `contains`, or `all` |
 | `methods` | interface method `count`, `contains`, or `all` |
 | `count` | matching declarations: `equals`, `min`, `max` |
 | `value` | literal constant `equals` or `matches` |
@@ -216,7 +217,9 @@ Declaration selectors support:
 A type condition accepts a legacy scalar such as `error` or a mapping with
 `name`, `type`, `typeMatches`, and `exportedType`. A method condition
 uses `name`, `nameMatches`, `parameters`, and `returns`. Configured
-fields use AND semantics; `contains` requires every listed condition.
+fields use AND semantics; `contains` requires every listed condition. A struct
+field condition supports `name`, `nameMatches`, `type`, `typeMatches`,
+`exported`, `exportedType`, and `tagMatches`.
 Omitted declaration count means at least one match.
 
 Matching is syntactic. It uses rendered Go AST types and does not perform type

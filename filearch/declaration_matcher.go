@@ -22,6 +22,7 @@ type DeclarationSelector struct {
 	Parameters     ParameterCondition `yaml:"parameters"`
 	Returns        ReturnCondition    `yaml:"returns"`
 	Embeds         EmbedCondition     `yaml:"embeds"`
+	Fields         FieldCondition     `yaml:"fields"`
 	Methods        MethodCondition    `yaml:"methods"`
 	Count          CountCondition     `yaml:"count"`
 	Value          ValueCondition     `yaml:"value"`
@@ -107,6 +108,22 @@ type EmbedCondition struct {
 	All      *TypeCondition    `yaml:"all"`
 }
 
+type FieldCondition struct {
+	Count    CountCondition  `yaml:"count"`
+	Contains []FieldSelector `yaml:"contains"`
+	All      *FieldSelector  `yaml:"all"`
+}
+
+type FieldSelector struct {
+	Name         string   `yaml:"name"`
+	NameMatches  []string `yaml:"nameMatches"`
+	Type         string   `yaml:"type"`
+	TypeMatches  []string `yaml:"typeMatches"`
+	Exported     *bool    `yaml:"exported"`
+	ExportedType *bool    `yaml:"exportedType"`
+	TagMatches   []string `yaml:"tagMatches"`
+}
+
 type MethodCondition struct {
 	Count    CountCondition      `yaml:"count"`
 	Contains []FunctionCondition `yaml:"contains"`
@@ -130,6 +147,13 @@ type typedCandidate struct {
 	Type string
 }
 
+type fieldCandidate struct {
+	Name     string
+	Type     string
+	Exported bool
+	Tag      string
+}
+
 type receiverCandidate struct {
 	Type    string
 	Pointer bool
@@ -150,6 +174,7 @@ type declarationCandidate struct {
 	Parameters []typedCandidate
 	Results    []typedCandidate
 	Embeds     []typedCandidate
+	Fields     []fieldCandidate
 	Methods    []functionCandidate
 	Value      *string
 }
@@ -185,6 +210,7 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 					switch value := typeSpec.Type.(type) {
 					case *ast.StructType:
 						candidate.Embeds = embeddedTypes(fset, value.Fields)
+						candidate.Fields = structFields(fset, value.Fields)
 					case *ast.InterfaceType:
 						candidate.Embeds, candidate.Methods = interfaceMembers(fset, value)
 					}
@@ -246,6 +272,50 @@ func embeddedTypes(fset *token.FileSet, fields *ast.FieldList) []typedCandidate 
 		}
 	}
 	return embeds
+}
+
+func structFields(fset *token.FileSet, fields *ast.FieldList) []fieldCandidate {
+	if fields == nil {
+		return nil
+	}
+	var values []fieldCandidate
+	for _, field := range fields.List {
+		tag := ""
+		if field.Tag != nil {
+			tag, _ = strconv.Unquote(field.Tag.Value)
+		}
+		typeName := renderExpr(fset, field.Type)
+		if len(field.Names) == 0 {
+			name := embeddedFieldName(field.Type)
+			values = append(values, fieldCandidate{
+				Name: name, Type: typeName, Exported: ast.IsExported(name), Tag: tag,
+			})
+			continue
+		}
+		for _, name := range field.Names {
+			values = append(values, fieldCandidate{
+				Name: name.Name, Type: typeName, Exported: ast.IsExported(name.Name), Tag: tag,
+			})
+		}
+	}
+	return values
+}
+
+func embeddedFieldName(expr ast.Expr) string {
+	switch value := expr.(type) {
+	case *ast.Ident:
+		return value.Name
+	case *ast.StarExpr:
+		return embeddedFieldName(value.X)
+	case *ast.SelectorExpr:
+		return value.Sel.Name
+	case *ast.IndexExpr:
+		return embeddedFieldName(value.X)
+	case *ast.IndexListExpr:
+		return embeddedFieldName(value.X)
+	default:
+		return ""
+	}
 }
 
 func interfaceMembers(fset *token.FileSet, value *ast.InterfaceType) ([]typedCandidate, []functionCandidate) {
@@ -321,6 +391,9 @@ func declarationMatches(candidate declarationCandidate, selector DeclarationSele
 	if !typedSequenceMatches(candidate.Embeds, selector.Embeds.Count, nil, selector.Embeds.Contains, selector.Embeds.All) {
 		return false
 	}
+	if !fieldsMatch(candidate.Fields, selector.Fields) {
+		return false
+	}
 	if !methodsMatch(candidate.Methods, selector.Methods) {
 		return false
 	}
@@ -331,6 +404,54 @@ func declarationMatches(candidate declarationCandidate, selector DeclarationSele
 		return false
 	}
 	return true
+}
+
+func fieldsMatch(fields []fieldCandidate, condition FieldCondition) bool {
+	if !countMatches(len(fields), condition.Count, true) {
+		return false
+	}
+	for _, required := range condition.Contains {
+		matched := false
+		for _, field := range fields {
+			if fieldMatches(field, required) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	}
+	if condition.All != nil {
+		for _, field := range fields {
+			if !fieldMatches(field, *condition.All) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func fieldMatches(field fieldCandidate, selector FieldSelector) bool {
+	if selector.Name != "" && field.Name != selector.Name {
+		return false
+	}
+	if len(selector.NameMatches) > 0 && !matchesRegexAny(field.Name, selector.NameMatches) {
+		return false
+	}
+	if selector.Type != "" && field.Type != selector.Type {
+		return false
+	}
+	if len(selector.TypeMatches) > 0 && !matchesRegexAny(field.Type, selector.TypeMatches) {
+		return false
+	}
+	if selector.Exported != nil && field.Exported != *selector.Exported {
+		return false
+	}
+	if selector.ExportedType != nil && exportedType(field.Type) != *selector.ExportedType {
+		return false
+	}
+	return len(selector.TagMatches) == 0 || matchesRegexAny(field.Tag, selector.TagMatches)
 }
 
 func receiverMatches(candidate *receiverCandidate, condition ReceiverCondition) bool {
@@ -505,6 +626,9 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 	if selector.Kind != "struct" && selector.Kind != "interface" && embedConfigured(selector.Embeds) {
 		return fmt.Errorf("file contract rule %q: embeds is only valid for struct or interface", ruleID)
 	}
+	if selector.Kind != "struct" && fieldConfigured(selector.Fields) {
+		return fmt.Errorf("file contract rule %q: fields is only valid for struct", ruleID)
+	}
 	if selector.Kind != "interface" && methodConfigured(selector.Methods) {
 		return fmt.Errorf("file contract rule %q: methods is only valid for interface", ruleID)
 	}
@@ -532,11 +656,42 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 	if err := validateEmbedCondition(ruleID, selector.Embeds); err != nil {
 		return err
 	}
+	if err := validateFieldCondition(ruleID, selector.Fields); err != nil {
+		return err
+	}
 	if err := validateMethodCondition(ruleID, selector.Methods); err != nil {
 		return err
 	}
 	if err := validateRegexes(ruleID, "value.matches", selector.Value.Matches); err != nil {
 		return err
+	}
+	return nil
+}
+
+func validateFieldCondition(ruleID string, condition FieldCondition) error {
+	if err := validateCount(ruleID, "fields.count", condition.Count); err != nil {
+		return err
+	}
+	for i, selector := range condition.Contains {
+		if err := validateFieldSelector(ruleID, fmt.Sprintf("fields.contains[%d]", i), selector); err != nil {
+			return err
+		}
+	}
+	if condition.All != nil {
+		return validateFieldSelector(ruleID, "fields.all", *condition.All)
+	}
+	return nil
+}
+
+func validateFieldSelector(ruleID, name string, selector FieldSelector) error {
+	for field, patterns := range map[string][]string{
+		"nameMatches": selector.NameMatches,
+		"typeMatches": selector.TypeMatches,
+		"tagMatches":  selector.TagMatches,
+	} {
+		if err := validateRegexes(ruleID, name+"."+field, patterns); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -640,6 +795,9 @@ func returnConfigured(value ReturnCondition) bool {
 	return value.First != nil || len(value.Contains) > 0 || value.All != nil || len(value.Matches) > 0 || countConfigured(value.Count)
 }
 func embedConfigured(value EmbedCondition) bool {
+	return len(value.Contains) > 0 || value.All != nil || countConfigured(value.Count)
+}
+func fieldConfigured(value FieldCondition) bool {
 	return len(value.Contains) > 0 || value.All != nil || countConfigured(value.Count)
 }
 func methodConfigured(value MethodCondition) bool {
