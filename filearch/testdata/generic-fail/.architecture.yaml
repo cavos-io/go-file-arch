@@ -1,0 +1,111 @@
+version: 1
+componentOptions:
+  requireMatch: true
+  requireSingleMatch: true
+
+components:
+  composition:
+    files:
+      include: [app.go]
+  core:
+    in: [core/*]
+  core_model:
+    in: [core/*/model]
+
+dependencyRules:
+  composition:
+    mayDependOn: [composition, core]
+  core:
+    mayDependOn: [core, core_model]
+  core_model:
+    mayDependOn: [core_model]
+
+templates:
+  domain_service:
+    pattern: core/{domain}/service.go
+    captures:
+      domain: '^[a-z][a-z0-9_]*$'
+
+pathRules:
+  - id: root-layout
+    directories:
+      include: ['.']
+    depth: direct
+    require:
+      files: [.architecture.yaml, app.go, go.mod]
+      directories: [core]
+    allow:
+      files: [.architecture.yaml, app.go, go.mod, rogue.go]
+      directories: [core, legacy]
+    deny:
+      directories: [legacy]
+    message: root layout contract
+
+directoryRules:
+  - id: domain-layout
+    directories:
+      include: [core/*]
+      exclude: [core/*/model]
+    require:
+      files: [service.go]
+      anyFiles: [model/*_model.go]
+    message: domain layout contract
+
+fileNameRules:
+  - id: model-file-name
+    files:
+      include: [core/*/model/*.go]
+    require:
+      fileName:
+        suffix: _model.go
+    message: model files use the domain suffix
+
+fileContractRules:
+  - id: domain-name-contract
+    files:
+      templates: [domain_service]
+    require:
+      siblingFiles: ['model/{domain}_model.go']
+      declarations:
+        - kind: interface
+          name: 'I{domain|pascal}Service'
+          count: {equals: 1}
+        - kind: func
+          name: 'New{domain|pascal}Service'
+          receiver: {present: false}
+          returns:
+            contains: ['*Service']
+          count: {equals: 1}
+    message: captured domain names must agree
+  - id: repository-context-contract
+    files:
+      templates: [domain_service]
+    require:
+      declarations:
+        - kind: interface
+          name: 'I{domain|pascal}Repository'
+          methods:
+            all:
+              parameters:
+                first: {name: ctx, type: context.Context}
+          count: {equals: 1}
+    message: repository methods start with context
+
+importRules:
+  - id: core-import-boundary
+    files:
+      templates: [domain_service]
+    allow:
+      components: [core_model]
+      paths: [context]
+    deny:
+      categories: [external, unmatched-internal]
+    message: core imports must be explicit
+  - id: composition-import-boundary
+    files:
+      include: [app.go]
+    allow:
+      components: [core]
+    deny:
+      categories: [external, unmatched-internal]
+    message: composition imports core only

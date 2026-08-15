@@ -56,6 +56,37 @@ pathRules:
 	}
 }
 
+func TestRunGenericStrictFixtures(t *testing.T) {
+	passing := filepath.Join("testdata", "generic-strict")
+	if err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(passing, ".architecture.yaml"),
+		Workdir:    passing,
+	}); err != nil {
+		t.Fatalf("passing fixture: %v", err)
+	}
+
+	failing := filepath.Join("testdata", "generic-fail")
+	err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(failing, ".architecture.yaml"),
+		Workdir:    failing,
+	})
+	var violation *ViolationError
+	if !errors.As(err, &violation) {
+		t.Fatalf("failing fixture error = %T %v, want *ViolationError", err, err)
+	}
+	const want = `7 architecture violation(s):
+core/project:1:1: [domain-layout]: domain layout contract required at least one file matching: model/*_model.go
+core/project/service.go:1:1: [domain-name-contract]: captured domain names must agree required declaration not found: interface IProjectService
+core/project/service.go:1:1: [domain-name-contract]: captured domain names must agree required sibling file not found: model/project_model.go
+core/project/service.go:1:1: [repository-context-contract]: repository methods start with context required declaration not found: interface IProjectRepository
+core/project/service.go:5:2: [core-import-boundary]: core imports must be explicit import "fmt" is not allowed; category: standard; target component: <none>
+legacy:1:1: [root-layout]: root layout contract denied directory: legacy
+rogue.go:1:1: [componentOptions.requireMatch]: file does not match any component`
+	if violation.Error() != want {
+		t.Fatalf("failing fixture diagnostics:\n%s\n\nwant:\n%s", violation, want)
+	}
+}
+
 func TestRunRequiresConfigPath(t *testing.T) {
 	err := Run(context.Background(), Options{
 		Workdir:  t.TempDir(), // empty dir: no config to discover

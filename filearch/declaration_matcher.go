@@ -342,7 +342,7 @@ func receiverMatches(candidate *receiverCandidate, condition ReceiverCondition) 
 		return false
 	}
 	if candidate == nil {
-		return false
+		return condition.Present != nil && !*condition.Present
 	}
 	if condition.Pointer != nil && candidate.Pointer != *condition.Pointer {
 		return false
