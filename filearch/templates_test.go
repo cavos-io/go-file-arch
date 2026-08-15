@@ -118,7 +118,24 @@ func TestFileContractExpandsCapturedSiblingAndDeclaration(t *testing.T) {
 			Files: FileSet{Templates: []string{"domain"}},
 			Require: FileContractRequirement{
 				SiblingFiles: []string{"model/{domain}_model.go"},
-				Declarations: []DeclarationSelector{{Kind: "interface", Name: "I{domain|pascal}Service"}},
+				Declarations: []DeclarationSelector{
+					{Kind: "interface", Name: "I{domain|pascal}Service"},
+					{
+						Kind: "func",
+						Name: "Handle",
+						Receiver: ReceiverCondition{
+							Present: testBoolPointer(true),
+							Pointer: testBoolPointer(true),
+							Type:    "{domain|pascal}Handler",
+						},
+						Parameters: ParameterCondition{
+							First: &TypeCondition{Name: "{domain|camel}", Type: "{domain|pascal}Request"},
+						},
+						Returns: ReturnCondition{
+							Contains: []TypeCondition{{Type: "*{domain|pascal}Response"}},
+						},
+					},
+				},
 			},
 			Message: "domain contract",
 		}},
@@ -131,6 +148,10 @@ func TestFileContractExpandsCapturedSiblingAndDeclaration(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, filename, `package batch_calls
 type IBatchCallService interface{}
+type BatchCallsHandler struct{}
+type BatchCallsRequest struct{}
+type BatchCallsResponse struct{}
+func (h *BatchCallsHandler) Handle(batchCalls BatchCallsRequest) *BatchCallsResponse { return nil }
 `, 0)
 	if err != nil {
 		t.Fatal(err)

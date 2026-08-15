@@ -72,19 +72,111 @@ func checkFileContractRules(pass *analysis.Pass, file *ast.File, filename string
 }
 
 func expandDeclarationSelector(selector DeclarationSelector, captures map[string]string) DeclarationSelector {
-	expanded := selector
-	expanded.Name, _ = expandTemplate(selector.Name, captures)
-	expanded.NameMatches = expandTemplateValues(selector.NameMatches, captures)
-	expanded.NameNotMatches = expandTemplateValues(selector.NameNotMatches, captures)
+	expanded, _ := expandDeclarationSelectorChecked(selector, captures)
 	return expanded
 }
 
-func expandTemplateValues(values []string, captures map[string]string) []string {
+func expandDeclarationSelectorChecked(selector DeclarationSelector, captures map[string]string) (DeclarationSelector, error) {
+	expanded := selector
+	var expansionError error
+	expand := func(value string) string {
+		if value == "" || expansionError != nil {
+			return value
+		}
+		result, err := expandTemplate(value, captures)
+		if err != nil {
+			expansionError = err
+			return value
+		}
+		return result
+	}
+	expanded.Name = expand(selector.Name)
+	expanded.NameMatches = expandTemplateValues(selector.NameMatches, expand)
+	expanded.NameNotMatches = expandTemplateValues(selector.NameNotMatches, expand)
+	expanded.Receiver.Type = expand(selector.Receiver.Type)
+	expanded.Receiver.TypeMatches = expandTemplateValues(selector.Receiver.TypeMatches, expand)
+	expanded.Parameters = expandParameterCondition(selector.Parameters, expand)
+	expanded.Returns = expandReturnCondition(selector.Returns, expand)
+	expanded.Embeds = expandEmbedCondition(selector.Embeds, expand)
+	expanded.Methods = expandMethodCondition(selector.Methods, expand)
+	if selector.Value.Equals != nil {
+		value := expand(*selector.Value.Equals)
+		expanded.Value.Equals = &value
+	}
+	expanded.Value.Matches = expandTemplateValues(selector.Value.Matches, expand)
+	return expanded, expansionError
+}
+
+func expandTemplateValues(values []string, expand func(string) string) []string {
 	expanded := make([]string, len(values))
 	for i, value := range values {
-		expanded[i], _ = expandTemplate(value, captures)
+		expanded[i] = expand(value)
 	}
 	return expanded
+}
+
+func expandTypeCondition(condition TypeCondition, expand func(string) string) TypeCondition {
+	condition.Name = expand(condition.Name)
+	condition.Type = expand(condition.Type)
+	condition.TypeMatches = expandTemplateValues(condition.TypeMatches, expand)
+	return condition
+}
+
+func expandTypeConditionList(conditions TypeConditionList, expand func(string) string) TypeConditionList {
+	expanded := make(TypeConditionList, len(conditions))
+	for i, condition := range conditions {
+		expanded[i] = expandTypeCondition(condition, expand)
+	}
+	return expanded
+}
+
+func expandOptionalTypeCondition(condition *TypeCondition, expand func(string) string) *TypeCondition {
+	if condition == nil {
+		return nil
+	}
+	expanded := expandTypeCondition(*condition, expand)
+	return &expanded
+}
+
+func expandParameterCondition(condition ParameterCondition, expand func(string) string) ParameterCondition {
+	condition.First = expandOptionalTypeCondition(condition.First, expand)
+	condition.Contains = expandTypeConditionList(condition.Contains, expand)
+	condition.All = expandOptionalTypeCondition(condition.All, expand)
+	return condition
+}
+
+func expandReturnCondition(condition ReturnCondition, expand func(string) string) ReturnCondition {
+	condition.First = expandOptionalTypeCondition(condition.First, expand)
+	condition.Contains = expandTypeConditionList(condition.Contains, expand)
+	condition.All = expandOptionalTypeCondition(condition.All, expand)
+	condition.Matches = expandTemplateValues(condition.Matches, expand)
+	return condition
+}
+
+func expandEmbedCondition(condition EmbedCondition, expand func(string) string) EmbedCondition {
+	condition.Contains = expandTypeConditionList(condition.Contains, expand)
+	condition.All = expandOptionalTypeCondition(condition.All, expand)
+	return condition
+}
+
+func expandFunctionCondition(condition FunctionCondition, expand func(string) string) FunctionCondition {
+	condition.Name = expand(condition.Name)
+	condition.NameMatches = expandTemplateValues(condition.NameMatches, expand)
+	condition.Parameters = expandParameterCondition(condition.Parameters, expand)
+	condition.Returns = expandReturnCondition(condition.Returns, expand)
+	return condition
+}
+
+func expandMethodCondition(condition MethodCondition, expand func(string) string) MethodCondition {
+	condition.Contains = append([]FunctionCondition(nil), condition.Contains...)
+	for i, method := range condition.Contains {
+		condition.Contains[i] = expandFunctionCondition(method, expand)
+	}
+	if condition.All != nil {
+		expanded := expandFunctionCondition(*condition.All, expand)
+		condition.All = &expanded
+	}
+	return condition
 }
 
 func fileSetAppliesToPaths(files FileSet, paths []string) bool {
@@ -214,18 +306,18 @@ func (cfg *Config) validateFileContractRules() error {
 
 func validateFileContractExpansions(rule FileContractRule, captures map[string]string) error {
 	values := append([]string{}, rule.Require.SiblingFiles...)
-	selectors := append(append([]DeclarationSelector{}, rule.Require.Declarations...), rule.Deny.Declarations...)
-	for _, selector := range selectors {
-		values = append(values, selector.Name)
-		values = append(values, selector.NameMatches...)
-		values = append(values, selector.NameNotMatches...)
-	}
 	for _, value := range values {
 		if value == "" {
 			continue
 		}
 		if _, err := expandTemplate(value, captures); err != nil {
 			return fmt.Errorf("file contract rule %q has invalid template expansion %q: %w", rule.ID, value, err)
+		}
+	}
+	selectors := append(append([]DeclarationSelector{}, rule.Require.Declarations...), rule.Deny.Declarations...)
+	for _, selector := range selectors {
+		if _, err := expandDeclarationSelectorChecked(selector, captures); err != nil {
+			return fmt.Errorf("file contract rule %q has invalid declaration template expansion: %w", rule.ID, err)
 		}
 	}
 	return nil
