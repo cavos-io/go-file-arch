@@ -51,6 +51,15 @@ directoryRules:
       anyFiles: [model/*_model.go]
     message: domain layout contract
 
+directoryNameRules:
+  - id: source-directory-name
+    directories:
+      include: [legacy/**]
+    require:
+      directoryName:
+        matches: ['^[a-z][a-z0-9]*(_[a-z0-9]+)*$']
+    message: source directories use snake_case
+
 fileNameRules:
   - id: model-file-name
     files:

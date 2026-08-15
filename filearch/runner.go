@@ -70,6 +70,7 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	diagnostics := checkDirectoryRules(cfg, inventory)
+	diagnostics = append(diagnostics, checkDirectoryNameRules(cfg, inventory)...)
 	diagnostics = append(diagnostics, checkPathRules(cfg, inventory)...)
 	seenFiles := make(map[string]bool)
 	for _, pkg := range pkgs {

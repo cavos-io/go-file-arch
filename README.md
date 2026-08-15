@@ -137,6 +137,30 @@ directoryRules:
 Every `files` pattern is required; at least one `anyFiles` pattern is
 required.
 
+`directoryNameRules` apply exact, set, regular-expression, prefix, or suffix
+conditions to each selected directory basename:
+
+```yaml
+directoryNameRules:
+  - id: module-directory-name
+    directories:
+      include: [modules/**]
+      exclude: [modules/generated/**]
+    require:
+      directoryName:
+        matches: ['^[a-z][a-z0-9]*(_[a-z0-9]+)*$']
+    deny:
+      directoryName:
+        equalsAny: [legacygroup]
+    message: module directories use snake_case
+```
+
+A configured `require` block is an allowlist and `deny` takes precedence.
+Directory-name rules use the repository inventory, so repository-wide checks
+require the CLI or `filearch.Run`. Unknown fields, invalid globs, invalid
+regular expressions, empty conditions, and duplicate rule IDs fail strict
+configuration loading.
+
 ### Reusable path templates
 
 Templates capture path segments and reuse them in sibling paths or declaration

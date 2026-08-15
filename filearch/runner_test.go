@@ -113,13 +113,14 @@ func TestRunGenericStrictFixtures(t *testing.T) {
 	if !errors.As(err, &violation) {
 		t.Fatalf("failing fixture error = %T %v, want *ViolationError", err, err)
 	}
-	const want = `7 architecture violation(s):
+	const want = `8 architecture violation(s):
 core/project:1:1: [domain-layout]: domain layout contract required at least one file matching: model/*_model.go
 core/project/service.go:1:1: [domain-name-contract]: captured domain names must agree required declaration not found: interface IProjectService
 core/project/service.go:1:1: [domain-name-contract]: captured domain names must agree required sibling file not found: model/project_model.go
 core/project/service.go:1:1: [repository-context-contract]: repository methods start with context required declaration not found: interface IProjectRepository
 core/project/service.go:5:2: [core-import-boundary]: core imports must be explicit import "fmt" is not allowed; category: standard; target component: <none>
 legacy:1:1: [root-layout]: root layout contract denied directory: legacy
+legacy/bad-group:1:1: [source-directory-name]: source directories use snake_case directory "bad-group" does not satisfy required directoryName condition
 rogue.go:1:1: [componentOptions.requireMatch]: file does not match any component`
 	if violation.Error() != want {
 		t.Fatalf("failing fixture diagnostics:\n%s\n\nwant:\n%s", violation, want)
@@ -136,6 +137,38 @@ func TestRunRequiresConfigPath(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "config not found") {
 		t.Fatalf("Run() error = %v, want 'config not found'", err)
+	}
+}
+
+func TestRunReportsDirectoryNameViolation(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/naming\n\ngo 1.26\n")
+	writeFile(t, dir, ".architecture.yaml", `
+version: 1
+directoryNameRules:
+  - id: source-directory-name
+    directories:
+      include: [adapter/**]
+    require:
+      directoryName:
+        matches: ['^[a-z][a-z0-9]*(_[a-z0-9]+)*$']
+    message: source directories use snake_case
+`)
+	writeFile(t, dir, "adapter/good_name/repository.go", "package good_name\n")
+	writeFile(t, dir, "adapter/bad-name/repository.go", "package bad_name\n")
+
+	err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(dir, ".architecture.yaml"),
+		Workdir:    dir,
+		Patterns:   []string{"./..."},
+	})
+	if err == nil {
+		t.Fatal("Run() error = nil, want directory naming violation")
+	}
+	for _, want := range []string{"1 architecture violation(s):", "adapter/bad-name:1:1", "source-directory-name"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("Run() error = %v, want %q", err, want)
+		}
 	}
 }
 
