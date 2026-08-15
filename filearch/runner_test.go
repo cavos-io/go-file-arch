@@ -2,11 +2,59 @@ package filearch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestRunReturnsViolationError(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/violation\n\ngo 1.25\n")
+	writeFile(t, dir, ".go-file-arch.yml", `
+version: 1
+contentRules:
+  - id: no-functions
+    files: {include: ['**/*.go']}
+    deny: {declarations: [func]}
+    message: functions denied
+`)
+	writeFile(t, dir, "feature.go", "package violation\nfunc Feature() {}\n")
+
+	err := Run(context.Background(), Options{ConfigPath: filepath.Join(dir, ".go-file-arch.yml"), Workdir: dir})
+	var violation *ViolationError
+	if !errors.As(err, &violation) {
+		t.Fatalf("Run() error = %T %v, want *ViolationError", err, err)
+	}
+}
+
+func TestRunUsesWorkdirOverrideWithExternalConfig(t *testing.T) {
+	repo := t.TempDir()
+	writeFile(t, repo, "go.mod", "module example.com/workdir\n\ngo 1.25\n")
+	writeFile(t, repo, "core/feature.go", "package core\n")
+
+	configDir := t.TempDir()
+	configPath := filepath.Join(configDir, "policy.yml")
+	if err := os.WriteFile(configPath, []byte(`
+version: 1
+workdir: ignored-by-cli
+components:
+  core:
+    in: [core]
+pathRules:
+  - id: module-file
+    directories: {include: ['.']}
+    require: {files: [go.mod]}
+    message: module required
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Run(context.Background(), Options{ConfigPath: configPath, Workdir: repo}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+}
 
 func TestRunRequiresConfigPath(t *testing.T) {
 	err := Run(context.Background(), Options{

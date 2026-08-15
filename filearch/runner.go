@@ -25,6 +25,12 @@ type Options struct {
 	Workdir            string
 }
 
+type ViolationError struct {
+	Message string
+}
+
+func (err *ViolationError) Error() string { return err.Message }
+
 func Run(ctx context.Context, opts Options) error {
 	if opts.ConfigPath == "" {
 		discovered, err := discoverConfigPath(opts.Workdir)
@@ -34,7 +40,7 @@ func Run(ctx context.Context, opts Options) error {
 		opts.ConfigPath = discovered
 	}
 
-	cfg, err := LoadConfig(opts.ConfigPath)
+	cfg, err := loadConfig(opts.ConfigPath, opts.Workdir)
 	if err != nil {
 		return err
 	}
@@ -51,7 +57,7 @@ func Run(ctx context.Context, opts Options) error {
 	fset := token.NewFileSet()
 	pkgs, err := packages.Load(&packages.Config{
 		Context: ctx,
-		Dir:     opts.Workdir,
+		Dir:     cfg.workdirAbs,
 		Fset:    fset,
 		Mode:    packages.NeedName | packages.NeedFiles,
 	}, patterns...)
@@ -104,14 +110,8 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	if opts.ArchLintConfigPath != "" {
-		archLintProjectPath := cfg.baseDir
-		if opts.Workdir != "" {
-			if abs, err := filepath.Abs(opts.Workdir); err == nil {
-				archLintProjectPath = abs
-			}
-		}
 		result, err := CheckArchLint(ctx, ArchLintOptions{
-			ProjectPath: archLintProjectPath,
+			ProjectPath: cfg.workdirAbs,
 			ArchFile:    opts.ArchLintConfigPath,
 		})
 		if err != nil {
@@ -126,7 +126,7 @@ func Run(ctx context.Context, opts Options) error {
 		return nil
 	}
 
-	return errors.New(strings.Join(messages, "\n"))
+	return &ViolationError{Message: strings.Join(messages, "\n")}
 }
 
 func diagnosticPath(filename string, cfg *Config) string {

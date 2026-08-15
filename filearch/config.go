@@ -84,6 +84,10 @@ var validDeclarationKinds = map[string]bool{
 }
 
 func LoadConfig(path string) (*Config, error) {
+	return loadConfig(path, "")
+}
+
+func loadConfig(path, workdirOverride string) (*Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("read config %q: %w", path, err)
@@ -101,14 +105,26 @@ func LoadConfig(path string) (*Config, error) {
 		return nil, fmt.Errorf("resolve config path %q: %w", path, err)
 	}
 	cfg.baseDir = filepath.Dir(absPath)
-	cfg.workdir = filepath.ToSlash(strings.Trim(cfg.Workdir, "/"))
-	cfg.workdirAbs = cfg.baseDir
-	if cfg.workdir != "" && cfg.workdir != "." {
-		cfg.workdirAbs = filepath.Join(cfg.baseDir, filepath.FromSlash(cfg.workdir))
+	if workdirOverride != "" {
+		cfg.workdirAbs, err = filepath.Abs(workdirOverride)
+		if err != nil {
+			return nil, fmt.Errorf("resolve workdir %q: %w", workdirOverride, err)
+		}
+		cfg.workdir = ""
+	} else {
+		cfg.workdir = filepath.ToSlash(strings.Trim(cfg.Workdir, "/"))
+		cfg.workdirAbs = cfg.baseDir
+		if cfg.workdir != "" && cfg.workdir != "." {
+			cfg.workdirAbs = filepath.Join(cfg.baseDir, filepath.FromSlash(cfg.workdir))
+		}
 	}
-	cfg.modulePath = readModulePath(cfg.baseDir)
-	if cfg.modulePath == "" {
+	if workdirOverride != "" {
 		cfg.modulePath = readModulePath(cfg.workdirAbs)
+	} else {
+		cfg.modulePath = readModulePath(cfg.baseDir)
+		if cfg.modulePath == "" {
+			cfg.modulePath = readModulePath(cfg.workdirAbs)
+		}
 	}
 
 	if err := cfg.validate(); err != nil {
