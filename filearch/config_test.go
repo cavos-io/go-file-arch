@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -548,6 +549,10 @@ version: 1
 componentOptions:
   requireMatch: true
   requireSingleMatch: true
+components:
+  composition:
+    files:
+      include: [app.go]
 templates:
   domain:
     pattern: core/{domain}/service.go
@@ -604,6 +609,24 @@ importRules:
 	_, err := LoadConfig(path)
 	if err == nil || !strings.Contains(err.Error(), `duplicate rule id "shared-id"`) {
 		t.Fatalf("LoadConfig() error = %v, want duplicate rule ID error", err)
+	}
+}
+
+func TestLoadConfigAcceptsFileOnlyComponent(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+components:
+  composition:
+    files:
+      include: [app.go]
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.Components["composition"].Files.Include; !reflect.DeepEqual(got, []string{"app.go"}) {
+		t.Fatalf("component files = %v", got)
 	}
 }
 

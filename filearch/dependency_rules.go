@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -98,120 +97,6 @@ func buildDependencyGraph(file *ast.File, cfg *Config, paths []string) dependenc
 		})
 	}
 	return graph
-}
-
-func (cfg *Config) matchAnyComponent(paths []string) (string, bool) {
-	for _, path := range paths {
-		component, ok := cfg.matchComponent(path)
-		if ok {
-			return component, true
-		}
-	}
-	return "", false
-}
-
-func (cfg *Config) matchComponent(path string) (string, bool) {
-	path = strings.Trim(filepath.ToSlash(path), "/")
-
-	var best componentMatch
-	if len(cfg.componentDirs) > 0 {
-		for name, dirs := range cfg.componentDirs {
-			for _, dir := range dirs {
-				if path != strings.Trim(dir.dir, "/") {
-					continue
-				}
-				candidate := componentMatch{
-					name:         name,
-					pattern:      dir.pattern,
-					prefixBytes:  nonWildcardPrefixLen(dir.pattern),
-					literalBytes: literalLen(dir.pattern),
-					wildcards:    wildcardCount(dir.pattern),
-				}
-				if !best.ok || candidate.moreSpecificThan(best) {
-					best = candidate
-					best.ok = true
-				}
-			}
-		}
-		return best.name, best.ok
-	}
-
-	for name, component := range cfg.Components {
-		for _, pattern := range component.In {
-			if !MatchesAnyGlob(path, []string{pattern}) {
-				continue
-			}
-			candidate := componentMatch{
-				name:         name,
-				pattern:      pattern,
-				prefixBytes:  nonWildcardPrefixLen(pattern),
-				literalBytes: literalLen(pattern),
-				wildcards:    wildcardCount(pattern),
-			}
-			if !best.ok || candidate.moreSpecificThan(best) {
-				best = candidate
-				best.ok = true
-			}
-		}
-	}
-	return best.name, best.ok
-}
-
-type componentMatch struct {
-	name         string
-	pattern      string
-	prefixBytes  int
-	literalBytes int
-	wildcards    int
-	ok           bool
-}
-
-func (match componentMatch) moreSpecificThan(other componentMatch) bool {
-	if match.prefixBytes != other.prefixBytes {
-		return match.prefixBytes > other.prefixBytes
-	}
-	if match.literalBytes != other.literalBytes {
-		return match.literalBytes > other.literalBytes
-	}
-	if match.wildcards != other.wildcards {
-		return match.wildcards < other.wildcards
-	}
-	if len(match.pattern) != len(other.pattern) {
-		return len(match.pattern) > len(other.pattern)
-	}
-	return match.name < other.name
-}
-
-func nonWildcardPrefixLen(pattern string) int {
-	idx := strings.IndexAny(pattern, "*?[")
-	if idx < 0 {
-		return len(pattern)
-	}
-	return idx
-}
-
-func literalLen(pattern string) int {
-	count := 0
-	for _, char := range pattern {
-		switch char {
-		case '*', '?', '[', ']':
-			continue
-		default:
-			count++
-		}
-	}
-	return count
-}
-
-func wildcardCount(pattern string) int {
-	count := 0
-	for _, char := range pattern {
-		switch char {
-		case '*', '?', '[':
-			count++
-		}
-	}
-	return count
 }
 
 func (cfg *Config) localImportPath(importPath string) (string, bool) {

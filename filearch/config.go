@@ -35,7 +35,8 @@ type Config struct {
 }
 
 type Component struct {
-	In []string `yaml:"in"`
+	In    []string `yaml:"in"`
+	Files FileSet  `yaml:"files"`
 }
 
 type ComponentOptions struct {
@@ -143,6 +144,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateComponents(); err != nil {
 		return err
 	}
+	if err := cfg.validateComponentOptions(); err != nil {
+		return err
+	}
 	if err := cfg.validateDependencyRules(); err != nil {
 		return err
 	}
@@ -230,8 +234,13 @@ func (cfg *Config) validateComponents() error {
 		if name == "" {
 			return fmt.Errorf("component name is required")
 		}
-		if len(component.In) == 0 {
-			return fmt.Errorf("component %q must include at least one path pattern", name)
+		if len(component.In) == 0 && len(component.Files.Include) == 0 {
+			return fmt.Errorf("component %q must include at least one directory or file pattern", name)
+		}
+		for _, pattern := range append(append([]string{}, component.Files.Include...), component.Files.Exclude...) {
+			if err := validateRelativeGlob(pattern); err != nil {
+				return fmt.Errorf("component %q: %w", name, err)
+			}
 		}
 		for _, pattern := range component.In {
 			matches := cfg.resolveComponentDirectories(pattern)

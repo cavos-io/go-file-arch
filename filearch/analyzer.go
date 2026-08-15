@@ -44,6 +44,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config, inventory *repositoryInvent
 	for _, file := range pass.Files {
 		filename := pass.Fset.Position(file.Pos()).Filename
 		paths := pathCandidates(filename, cfg)
+		checkComponentOptions(pass, file, cfg, relativeToWorkdir(filename, cfg))
 		for _, rule := range cfg.ContentRules {
 			if !ruleAppliesToPath(rule, paths) {
 				continue
