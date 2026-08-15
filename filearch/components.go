@@ -95,6 +95,58 @@ func (cfg *Config) matchComponent(path string) (string, bool) {
 	return best.name, best.ok
 }
 
+// matchPackageComponent resolves an import path, which names a package
+// directory rather than one of the Go files selected by components.files.
+func (cfg *Config) matchPackageComponent(path string) (string, bool) {
+	path = strings.Trim(filepath.ToSlash(path), "/")
+	var best componentMatch
+	for _, match := range cfg.componentMatches(path) {
+		if !best.ok || match.moreSpecificThan(best) {
+			best = match
+		}
+	}
+
+	for name, component := range cfg.Components {
+		excluded := false
+		for _, pattern := range component.Files.Exclude {
+			pattern = filepath.ToSlash(pattern)
+			if filepath.Base(pattern) == "*.go" && matchGlob(path, componentFilePackagePattern(pattern)) {
+				excluded = true
+				break
+			}
+		}
+		if excluded {
+			continue
+		}
+		for _, pattern := range component.Files.Include {
+			pattern = filepath.ToSlash(pattern)
+			if !matchGlob(path, componentFilePackagePattern(pattern)) {
+				continue
+			}
+			candidate := componentMatch{
+				name:         name,
+				pattern:      pattern,
+				prefixBytes:  nonWildcardPrefixLen(pattern),
+				literalBytes: literalLen(pattern),
+				wildcards:    wildcardCount(pattern),
+				ok:           true,
+			}
+			if !best.ok || candidate.moreSpecificThan(best) {
+				best = candidate
+			}
+		}
+	}
+	return best.name, best.ok
+}
+
+func componentFilePackagePattern(pattern string) string {
+	dir := filepath.ToSlash(filepath.Dir(pattern))
+	if dir == "." {
+		return ""
+	}
+	return dir
+}
+
 func (match componentMatch) moreSpecificThan(other componentMatch) bool {
 	if match.prefixBytes != other.prefixBytes {
 		return match.prefixBytes > other.prefixBytes

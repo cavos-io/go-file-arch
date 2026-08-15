@@ -34,6 +34,36 @@ func TestClassifyImport(t *testing.T) {
 	}
 }
 
+func TestClassifyImportMatchesPackageFromFileComponentPatterns(t *testing.T) {
+	cfg := &Config{
+		modulePath: "example.com/project",
+		Components: map[string]Component{
+			"composition": {Files: FileSet{Include: []string{"app.go"}}},
+			"core": {Files: FileSet{
+				Include: []string{"core/**/*.go"},
+				Exclude: []string{"core/*/model/**/*.go"},
+			}},
+			"core_model": {Files: FileSet{Include: []string{"core/*/model/**/*.go"}}},
+		},
+	}
+
+	for _, test := range []struct {
+		path      string
+		component string
+	}{
+		{"example.com/project", "composition"},
+		{"example.com/project/core/user", "core"},
+		{"example.com/project/core/user/model", "core_model"},
+	} {
+		t.Run(test.path, func(t *testing.T) {
+			got := classifyImport(test.path, cfg)
+			if got.Category != importCategoryInternal || got.Component != test.component {
+				t.Fatalf("classifyImport(%q) = %#v, want internal component %q", test.path, got, test.component)
+			}
+		})
+	}
+}
+
 func TestImportRulesDenyPrecedesAllowlist(t *testing.T) {
 	rule := ImportRule{
 		Allow: ImportConditions{Categories: []string{"external"}},

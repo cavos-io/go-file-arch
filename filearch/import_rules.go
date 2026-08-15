@@ -36,7 +36,7 @@ func classifyImport(importPath string, cfg *Config) importTarget {
 	trimmed := strings.Trim(importPath, "/")
 	if cfg.modulePath != "" && (trimmed == cfg.modulePath || strings.HasPrefix(trimmed, cfg.modulePath+"/")) {
 		target.RelativePath = strings.TrimPrefix(strings.TrimPrefix(trimmed, cfg.modulePath), "/")
-		if component, ok := cfg.matchComponent(target.RelativePath); ok {
+		if component, ok := cfg.matchPackageComponent(target.RelativePath); ok {
 			target.Category = importCategoryInternal
 			target.Component = component
 		} else {
@@ -44,7 +44,7 @@ func classifyImport(importPath string, cfg *Config) importTarget {
 		}
 		return target
 	}
-	if component, ok := cfg.matchComponent(trimmed); ok {
+	if component, ok := cfg.matchPackageComponent(trimmed); ok {
 		target.Category = importCategoryInternal
 		target.Component = component
 		target.RelativePath = trimmed
