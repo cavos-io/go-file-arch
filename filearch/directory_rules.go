@@ -7,6 +7,7 @@ import (
 
 type DirectoryRule struct {
 	ID          string               `yaml:"id"`
+	Severity    string               `yaml:"severity"`
 	Directories FileSet              `yaml:"directories"`
 	Require     DirectoryRequirement `yaml:"require"`
 	Message     string               `yaml:"message"`
@@ -63,6 +64,9 @@ func (cfg *Config) validateDirectoryRules() error {
 	for i, rule := range cfg.DirectoryRules {
 		if rule.ID == "" {
 			return fmt.Errorf("directoryRules[%d].id is required", i)
+		}
+		if err := validateSeverity(rule.ID, rule.Severity); err != nil {
+			return err
 		}
 		if len(rule.Directories.Include) == 0 {
 			return fmt.Errorf("directory rule %q must include at least one directory pattern", rule.ID)

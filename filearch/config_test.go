@@ -533,6 +533,89 @@ func TestMostSpecificComponentWins(t *testing.T) {
 	}
 }
 
+func TestLoadConfigRejectsUnknownFields(t *testing.T) {
+	path := writeConfigFixture(t, "version: 1\nunknownPolicy: true\n")
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "field unknownPolicy not found") {
+		t.Fatalf("LoadConfig() error = %v, want unknown-field error", err)
+	}
+}
+
+func TestLoadConfigParsesGenericOptions(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+componentOptions:
+  requireMatch: true
+  requireSingleMatch: true
+templates:
+  domain:
+    pattern: core/{domain}/service.go
+    captures:
+      domain: '^[a-z][a-z0-9_]*$'
+`)
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.ComponentOptions.RequireMatch || !cfg.ComponentOptions.RequireSingleMatch {
+		t.Fatalf("ComponentOptions = %#v", cfg.ComponentOptions)
+	}
+	if cfg.Templates["domain"].Pattern != "core/{domain}/service.go" {
+		t.Fatalf("Templates = %#v", cfg.Templates)
+	}
+}
+
+func TestLoadConfigRejectsUnsupportedSeverity(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+contentRules:
+  - id: no-structs
+    severity: warning
+    files:
+      include: ['**/*.go']
+    deny:
+      declarations: [struct]
+    message: structs are forbidden
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), `unsupported severity "warning"`) {
+		t.Fatalf("LoadConfig() error = %v, want unsupported severity error", err)
+	}
+}
+
+func TestLoadConfigRejectsDuplicateIDsAcrossNewRuleFamilies(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+pathRules:
+  - id: shared-id
+    directories: {include: ['.']}
+    require: {files: [go.mod]}
+    message: root files
+importRules:
+  - id: shared-id
+    files: {include: ['**/*.go']}
+    deny: {categories: [external]}
+    message: external imports
+`)
+
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), `duplicate rule id "shared-id"`) {
+		t.Fatalf("LoadConfig() error = %v, want duplicate rule ID error", err)
+	}
+}
+
+func writeConfigFixture(t *testing.T, contents string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yml")
+	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
 func parseTestFile(t *testing.T, name string, src string) *ast.File {
 	t.Helper()
 

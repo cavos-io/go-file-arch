@@ -10,11 +10,12 @@ import (
 )
 
 type FileContractRule struct {
-	ID      string                  `yaml:"id"`
-	Files   FileSet                 `yaml:"files"`
-	Require FileContractRequirement `yaml:"require"`
-	Deny    FileContractDenial      `yaml:"deny"`
-	Message string                  `yaml:"message"`
+	ID       string                  `yaml:"id"`
+	Severity string                  `yaml:"severity"`
+	Files    FileSet                 `yaml:"files"`
+	Require  FileContractRequirement `yaml:"require"`
+	Deny     FileContractDenial      `yaml:"deny"`
+	Message  string                  `yaml:"message"`
 }
 
 type FileContractRequirement struct {
@@ -135,6 +136,9 @@ func (cfg *Config) validateFileContractRules() error {
 	for i, rule := range cfg.FileContractRules {
 		if rule.ID == "" {
 			return fmt.Errorf("fileContractRules[%d].id is required", i)
+		}
+		if err := validateSeverity(rule.ID, rule.Severity); err != nil {
+			return err
 		}
 		if len(rule.Files.Include) == 0 {
 			return fmt.Errorf("file contract rule %q must include at least one file pattern", rule.ID)

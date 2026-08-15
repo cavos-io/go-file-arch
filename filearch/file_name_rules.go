@@ -12,12 +12,13 @@ import (
 )
 
 type FileNameRule struct {
-	ID      string              `yaml:"id"`
-	Files   FileSet             `yaml:"files"`
-	When    FileNameRuleWhen    `yaml:"when"`
-	Require FileNameRequirement `yaml:"require"`
-	Deny    FileNameRequirement `yaml:"deny"`
-	Message string              `yaml:"message"`
+	ID       string              `yaml:"id"`
+	Severity string              `yaml:"severity"`
+	Files    FileSet             `yaml:"files"`
+	When     FileNameRuleWhen    `yaml:"when"`
+	Require  FileNameRequirement `yaml:"require"`
+	Deny     FileNameRequirement `yaml:"deny"`
+	Message  string              `yaml:"message"`
 }
 
 type FileNameRuleWhen struct {
@@ -42,6 +43,9 @@ func (cfg *Config) validateFileNameRules() error {
 	for i, rule := range cfg.FileNameRules {
 		if rule.ID == "" {
 			return fmt.Errorf("fileNameRules[%d].id is required", i)
+		}
+		if err := validateSeverity(rule.ID, rule.Severity); err != nil {
+			return err
 		}
 		if len(rule.Files.Include) == 0 {
 			return fmt.Errorf("fileName rule %q must include at least one file pattern", rule.ID)

@@ -1,6 +1,7 @@
 package filearch
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,12 +14,16 @@ type Config struct {
 	Version           int                       `yaml:"version"`
 	Workdir           string                    `yaml:"workdir"`
 	Components        map[string]Component      `yaml:"components"`
+	ComponentOptions  ComponentOptions          `yaml:"componentOptions"`
 	CommonComponents  []string                  `yaml:"commonComponents"`
 	DependencyRules   map[string]DependencyRule `yaml:"dependencyRules"`
 	ContentRules      []ContentRule             `yaml:"contentRules"`
 	FileNameRules     []FileNameRule            `yaml:"fileNameRules"`
 	DirectoryRules    []DirectoryRule           `yaml:"directoryRules"`
 	FileContractRules []FileContractRule        `yaml:"fileContractRules"`
+	PathRules         []PathRule                `yaml:"pathRules"`
+	ImportRules       []ImportRule              `yaml:"importRules"`
+	Templates         map[string]PathTemplate   `yaml:"templates"`
 
 	baseDir string
 
@@ -31,6 +36,49 @@ type Config struct {
 
 type Component struct {
 	In []string `yaml:"in"`
+}
+
+type ComponentOptions struct {
+	RequireMatch       bool `yaml:"requireMatch"`
+	RequireSingleMatch bool `yaml:"requireSingleMatch"`
+}
+
+type PathTemplate struct {
+	Pattern  string            `yaml:"pattern"`
+	Captures map[string]string `yaml:"captures"`
+}
+
+type PathRule struct {
+	ID          string  `yaml:"id"`
+	Severity    string  `yaml:"severity"`
+	Directories FileSet `yaml:"directories"`
+	Depth       string  `yaml:"depth"`
+	Require     PathSet `yaml:"require"`
+	Allow       PathSet `yaml:"allow"`
+	Deny        PathSet `yaml:"deny"`
+	Message     string  `yaml:"message"`
+}
+
+type PathSet struct {
+	Files       []string `yaml:"files"`
+	Directories []string `yaml:"directories"`
+}
+
+type ImportRule struct {
+	ID       string           `yaml:"id"`
+	Severity string           `yaml:"severity"`
+	Files    FileSet          `yaml:"files"`
+	Allow    ImportConditions `yaml:"allow"`
+	Deny     ImportConditions `yaml:"deny"`
+	Message  string           `yaml:"message"`
+}
+
+type ImportConditions struct {
+	Components   []string `yaml:"components"`
+	Paths        []string `yaml:"paths"`
+	PathPrefixes []string `yaml:"pathPrefixes"`
+	PathMatches  []string `yaml:"pathMatches"`
+	Categories   []string `yaml:"categories"`
 }
 
 type FileSet struct {
@@ -60,7 +108,9 @@ func LoadConfig(path string) (*Config, error) {
 	}
 
 	var cfg Config
-	if err := yaml.Unmarshal(data, &cfg); err != nil {
+	decoder := yaml.NewDecoder(bytes.NewReader(data))
+	decoder.KnownFields(true)
+	if err := decoder.Decode(&cfg); err != nil {
 		return nil, fmt.Errorf("parse config %q: %w", path, err)
 	}
 
@@ -111,6 +161,13 @@ func (cfg *Config) validate() error {
 	return cfg.validateUniqueRuleIDs()
 }
 
+func validateSeverity(ruleID, severity string) error {
+	if severity == "" || severity == "error" {
+		return nil
+	}
+	return fmt.Errorf("rule %q has unsupported severity %q; only error is supported", ruleID, severity)
+}
+
 func (cfg *Config) validateUniqueRuleIDs() error {
 	seen := make(map[string]bool)
 	check := func(id string) error {
@@ -136,6 +193,16 @@ func (cfg *Config) validateUniqueRuleIDs() error {
 		}
 	}
 	for _, rule := range cfg.FileContractRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.PathRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.ImportRules {
 		if err := check(rule.ID); err != nil {
 			return err
 		}

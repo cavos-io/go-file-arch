@@ -11,17 +11,21 @@ import (
 )
 
 type ContentRule struct {
-	ID      string         `yaml:"id"`
-	Files   FileSet        `yaml:"files"`
-	Allow   DeclarationSet `yaml:"allow"`
-	Deny    DeclarationSet `yaml:"deny"`
-	Message string         `yaml:"message"`
+	ID       string         `yaml:"id"`
+	Severity string         `yaml:"severity"`
+	Files    FileSet        `yaml:"files"`
+	Allow    DeclarationSet `yaml:"allow"`
+	Deny     DeclarationSet `yaml:"deny"`
+	Message  string         `yaml:"message"`
 }
 
 func (cfg *Config) validateContentRules() error {
 	for i, rule := range cfg.ContentRules {
 		if rule.ID == "" {
 			return fmt.Errorf("contentRules[%d].id is required", i)
+		}
+		if err := validateSeverity(rule.ID, rule.Severity); err != nil {
+			return err
 		}
 		if len(rule.Files.Include) == 0 {
 			return fmt.Errorf("content rule %q must include at least one file pattern", rule.ID)
