@@ -11,19 +11,20 @@ import (
 )
 
 type Config struct {
-	Version           int                       `yaml:"version"`
-	Workdir           string                    `yaml:"workdir"`
-	Components        map[string]Component      `yaml:"components"`
-	ComponentOptions  ComponentOptions          `yaml:"componentOptions"`
-	CommonComponents  []string                  `yaml:"commonComponents"`
-	DependencyRules   map[string]DependencyRule `yaml:"dependencyRules"`
-	ContentRules      []ContentRule             `yaml:"contentRules"`
-	FileNameRules     []FileNameRule            `yaml:"fileNameRules"`
-	DirectoryRules    []DirectoryRule           `yaml:"directoryRules"`
-	FileContractRules []FileContractRule        `yaml:"fileContractRules"`
-	PathRules         []PathRule                `yaml:"pathRules"`
-	ImportRules       []ImportRule              `yaml:"importRules"`
-	Templates         map[string]PathTemplate   `yaml:"templates"`
+	Version            int                       `yaml:"version"`
+	Workdir            string                    `yaml:"workdir"`
+	Components         map[string]Component      `yaml:"components"`
+	ComponentOptions   ComponentOptions          `yaml:"componentOptions"`
+	CommonComponents   []string                  `yaml:"commonComponents"`
+	DependencyRules    map[string]DependencyRule `yaml:"dependencyRules"`
+	ContentRules       []ContentRule             `yaml:"contentRules"`
+	FileNameRules      []FileNameRule            `yaml:"fileNameRules"`
+	DirectoryNameRules []DirectoryNameRule       `yaml:"directoryNameRules"`
+	DirectoryRules     []DirectoryRule           `yaml:"directoryRules"`
+	FileContractRules  []FileContractRule        `yaml:"fileContractRules"`
+	PathRules          []PathRule                `yaml:"pathRules"`
+	ImportRules        []ImportRule              `yaml:"importRules"`
+	Templates          map[string]PathTemplate   `yaml:"templates"`
 
 	baseDir string
 
@@ -156,6 +157,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateFileNameRules(); err != nil {
 		return err
 	}
+	if err := cfg.validateDirectoryNameRules(); err != nil {
+		return err
+	}
 	if err := cfg.validateDirectoryRules(); err != nil {
 		return err
 	}
@@ -193,6 +197,11 @@ func (cfg *Config) validateUniqueRuleIDs() error {
 		}
 	}
 	for _, rule := range cfg.FileNameRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.DirectoryNameRules {
 		if err := check(rule.ID); err != nil {
 			return err
 		}
