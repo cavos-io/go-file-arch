@@ -5,7 +5,6 @@ import (
 	"go/ast"
 	"go/token"
 	"strconv"
-	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -100,17 +99,9 @@ func buildDependencyGraph(file *ast.File, cfg *Config, paths []string) dependenc
 }
 
 func (cfg *Config) localImportPath(importPath string) (string, bool) {
-	importPath = strings.Trim(importPath, "/")
-	if cfg.modulePath != "" {
-		if importPath == cfg.modulePath {
-			return "", true
-		}
-		if strings.HasPrefix(importPath, cfg.modulePath+"/") {
-			return strings.TrimPrefix(importPath, cfg.modulePath+"/"), true
-		}
-	}
-	if _, ok := cfg.matchComponent(importPath); ok {
-		return importPath, true
+	target := classifyImport(importPath, cfg)
+	if target.Category == importCategoryInternal || target.Category == importCategoryUnmatchedInternal {
+		return target.RelativePath, true
 	}
 	return "", false
 }

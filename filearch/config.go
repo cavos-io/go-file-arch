@@ -149,6 +149,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validatePathRules(); err != nil {
 		return err
 	}
+	if err := cfg.validateImportRules(); err != nil {
+		return err
+	}
 	return cfg.validateUniqueRuleIDs()
 }
 

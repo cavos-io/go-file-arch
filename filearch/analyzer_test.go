@@ -270,6 +270,56 @@ dependencyRules:
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
 }
 
+func TestAnalyzerIgnoresUnclassifiedImportsWithoutImportRules(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"modules/one/feature.go": `package one
+import "example.net/pkg"
+var Name = pkg.Name
+`,
+		"example.net/pkg/pkg.go": `package pkg
+const Name = "external"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	if err := os.WriteFile(configPath, []byte("version: 1\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "modules/one")
+}
+
+func TestAnalyzerReportsImportRuleViolation(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"modules/one/feature.go": `package one
+import "context" // want "\\[no-standard-imports\\].*context.*category: standard.*target component: <none>"
+var Background = context.Background
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	if err := os.WriteFile(configPath, []byte(`
+version: 1
+importRules:
+  - id: no-standard-imports
+    files:
+      include: [modules/**/*.go]
+    deny:
+      categories: [standard]
+    message: module imports must be explicit
+`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "modules/one")
+}
+
 func TestAnalyzerMatchesComponentsByPackageDirectory(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/service.go": `package user

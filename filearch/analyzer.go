@@ -59,6 +59,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config, inventory *repositoryInvent
 		}
 		checkFileContractRules(pass, file, filename, cfg, inventory)
 		checkDependencyRules(pass, file, cfg, paths)
+		checkImportRules(pass, file, cfg, paths)
 	}
 
 	return nil, nil
