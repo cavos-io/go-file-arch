@@ -60,6 +60,7 @@ func Run(ctx context.Context, opts Options) error {
 		Dir:     cfg.workdirAbs,
 		Fset:    fset,
 		Mode:    packages.NeedName | packages.NeedFiles,
+		Tests:   true,
 	}, patterns...)
 	if err != nil {
 		return fmt.Errorf("load packages: %w", err)
@@ -70,8 +71,17 @@ func Run(ctx context.Context, opts Options) error {
 
 	diagnostics := checkDirectoryRules(cfg, inventory)
 	diagnostics = append(diagnostics, checkPathRules(cfg, inventory)...)
+	seenFiles := make(map[string]bool)
 	for _, pkg := range pkgs {
-		files, err := parsePackageFiles(fset, pkg.GoFiles)
+		var filenames []string
+		for _, filename := range pkg.GoFiles {
+			if seenFiles[filename] {
+				continue
+			}
+			seenFiles[filename] = true
+			filenames = append(filenames, filename)
+		}
+		files, err := parsePackageFiles(fset, filenames)
 		if err != nil {
 			return err
 		}

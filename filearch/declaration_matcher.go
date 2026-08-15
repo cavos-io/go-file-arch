@@ -444,17 +444,13 @@ func returnSequenceMatches(results []typedCandidate, condition ReturnCondition) 
 	if !typedSequenceMatches(results, condition.Count, condition.First, condition.Contains, condition.All) {
 		return false
 	}
-	for _, pattern := range condition.Matches {
-		matched := false
+	if len(condition.Matches) > 0 {
 		for _, result := range results {
-			if matchesRegexAny(result.Type, []string{pattern}) {
-				matched = true
-				break
+			if matchesRegexAny(result.Type, condition.Matches) {
+				return true
 			}
 		}
-		if !matched {
-			return false
-		}
+		return false
 	}
 	return true
 }

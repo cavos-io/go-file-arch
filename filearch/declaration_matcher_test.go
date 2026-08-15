@@ -27,7 +27,7 @@ func helper() bool { return true }
 		{Kind: "const", Name: "Title", Value: ValueCondition{Equals: testStringPointer("v1")}},
 		{Kind: "const", Name: "Empty", Value: ValueCondition{Equals: testStringPointer("")}},
 		{Kind: "func", NameMatches: []string{"^New"}, Receiver: ReceiverCondition{Present: testBoolPointer(false)}, Returns: ReturnCondition{Contains: []TypeCondition{{Type: "*Feature"}, {Type: "error"}}}},
-		{Kind: "func", Returns: ReturnCondition{Matches: []string{"^bool$"}}},
+		{Kind: "func", Returns: ReturnCondition{Matches: []string{"^missing$", "^bool$"}}},
 		{Kind: "interface", Exported: testBoolPointer(true)},
 		{Kind: "type", Name: "FeatureOption"},
 		{Kind: "func", Name: "helper", Exported: testBoolPointer(false)},

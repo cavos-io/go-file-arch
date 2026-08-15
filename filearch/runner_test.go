@@ -29,6 +29,27 @@ contentRules:
 	}
 }
 
+func TestRunAnalyzesTestFiles(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/tests\n\ngo 1.25\n")
+	writeFile(t, dir, ".architecture.yaml", `
+version: 1
+contentRules:
+  - id: test-functions
+    files: {include: ['**/*_test.go']}
+    deny: {declarations: [func]}
+    message: test functions are checked
+`)
+	writeFile(t, dir, "feature.go", "package tests\n")
+	writeFile(t, dir, "feature_test.go", "package tests\nimport \"testing\"\nfunc TestFeature(t *testing.T) {}\n")
+
+	err := Run(context.Background(), Options{ConfigPath: filepath.Join(dir, ".architecture.yaml"), Workdir: dir})
+	var violation *ViolationError
+	if !errors.As(err, &violation) || !strings.Contains(err.Error(), "feature_test.go") {
+		t.Fatalf("Run() error = %T %v, want test-file violation", err, err)
+	}
+}
+
 func TestRunUsesWorkdirOverrideWithExternalConfig(t *testing.T) {
 	repo := t.TempDir()
 	writeFile(t, repo, "go.mod", "module example.com/workdir\n\ngo 1.25\n")
