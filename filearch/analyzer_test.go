@@ -194,6 +194,39 @@ fileContractRules:
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "modules/one")
 }
 
+func TestAnalyzerAppliesDeclarationCountToDenials(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"modules/one/feature.go": `package one
+
+func First() {} // want "\\[exact-two-functions\\].*denied declaration matched: exported func First"
+func Second() {} // want "\\[exact-two-functions\\].*denied declaration matched: exported func Second"
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+fileContractRules:
+  - id: exact-two-functions
+    files:
+      include: [modules/*/feature.go]
+    deny:
+      declarations:
+        - kind: func
+          count: {equals: 2}
+    message: exactly two functions are denied
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "modules/one")
+}
+
 func TestAnalyzerReportsDependencyRuleViolation(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"core/user/service.go": `package user

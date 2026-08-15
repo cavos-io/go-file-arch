@@ -171,8 +171,12 @@ fileContractRules:
         - kind: func
           name: NewFeature
           exported: true
+          receiver:
+            present: false
+          parameters:
+            first: {name: ctx, type: context.Context}
           returns:
-            contains: ["*Feature"]
+            contains: ["*Feature", {type: error}]
     deny:
       declarations:
         - kind: interface
@@ -194,8 +198,14 @@ fileContractRules:
 	if selector.Exported == nil || !*selector.Exported {
 		t.Fatalf("exported = %v, want true", selector.Exported)
 	}
-	if got := selector.Returns.Contains[0]; got != "*Feature" {
-		t.Fatalf("returns.contains[0] = %q", got)
+	if got := selector.Returns.Contains[0].Type; got != "*Feature" {
+		t.Fatalf("returns.contains[0].type = %q", got)
+	}
+	if got := selector.Returns.Contains[1].Type; got != "error" {
+		t.Fatalf("returns.contains[1].type = %q", got)
+	}
+	if selector.Parameters.First == nil || selector.Parameters.First.Name != "ctx" || selector.Parameters.First.Type != "context.Context" {
+		t.Fatalf("parameters.first = %#v", selector.Parameters.First)
 	}
 }
 
@@ -224,6 +234,11 @@ func TestLoadConfigRejectsInvalidRepositoryContracts(t *testing.T) {
 			name: "invalid regex",
 			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  deny:\n    declarations:\n    - kind: func\n      nameMatches: ['[']\n  message: bad\n",
 			want: "invalid nameMatches regex",
+		},
+		{
+			name: "unknown type condition field",
+			yaml: "version: 1\nfileContractRules:\n- id: bad\n  files: {include: ['**/*.go']}\n  require:\n    declarations:\n    - kind: func\n      returns:\n        contains: [{typo: error}]\n  message: bad\n",
+			want: "field typo not found",
 		},
 		{
 			name: "escaping sibling",

@@ -54,10 +54,11 @@ func checkFileContractRules(pass *analysis.Pass, file *ast.File, filename string
 			seen := make(map[string]bool)
 			for _, selector := range rule.Deny.Declarations {
 				expanded := expandDeclarationSelector(selector, match.Captures)
-				for _, candidate := range candidates {
-					if !declarationMatches(candidate, expanded) {
-						continue
-					}
+				matched := matchingDeclarationCandidates(candidates, expanded)
+				if !countMatches(len(matched), expanded.Count, false) {
+					continue
+				}
+				for _, candidate := range matched {
 					key := fmt.Sprintf("%d:%s:%s", candidate.Pos, candidate.Kind, candidate.Name)
 					if seen[key] {
 						continue
@@ -124,7 +125,7 @@ func selectorDescription(selector DeclarationSelector) string {
 		parts = append(parts, "name does not match "+quotedList(selector.NameNotMatches))
 	}
 	if len(selector.Returns.Contains) > 0 {
-		parts = append(parts, "returns contains "+quotedList(selector.Returns.Contains))
+		parts = append(parts, "returns contains "+quotedTypeList(selector.Returns.Contains))
 	}
 	if len(selector.Returns.Matches) > 0 {
 		parts = append(parts, "returns matches "+quotedList(selector.Returns.Matches))
@@ -144,6 +145,14 @@ func quotedList(values []string) string {
 		quoted[i] = fmt.Sprintf("%q", value)
 	}
 	return strings.Join(quoted, " or ")
+}
+
+func quotedTypeList(values []TypeCondition) string {
+	types := make([]string, len(values))
+	for i, value := range values {
+		types[i] = value.Type
+	}
+	return quotedList(types)
 }
 
 func candidateDescription(candidate declarationCandidate) string {
