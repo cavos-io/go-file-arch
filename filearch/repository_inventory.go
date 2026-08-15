@@ -1,8 +1,10 @@
 package filearch
 
 import (
+	"bytes"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,6 +26,7 @@ func newRepositoryInventory(root string) (*repositoryInventory, error) {
 		files: make(map[string]struct{}),
 		dirs:  []string{"."},
 	}
+	ignored := ignoredRepositoryPaths(absRoot)
 	err = filepath.WalkDir(absRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -34,6 +37,12 @@ func newRepositoryInventory(root string) (*repositoryInventory, error) {
 		}
 		rel = filepath.ToSlash(rel)
 		if rel == "." {
+			return nil
+		}
+		if rel == ".git" || repositoryPathIgnored(rel, ignored) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
 			return nil
 		}
 		if entry.Type()&os.ModeSymlink != 0 {
@@ -51,6 +60,34 @@ func newRepositoryInventory(root string) (*repositoryInventory, error) {
 	}
 	sort.Strings(inventory.dirs)
 	return inventory, nil
+}
+
+func ignoredRepositoryPaths(root string) map[string]struct{} {
+	ignored := make(map[string]struct{})
+	output, err := exec.Command(
+		"git", "-C", root, "ls-files", "--others", "--ignored",
+		"--exclude-standard", "--directory", "-z",
+	).Output()
+	if err != nil {
+		return ignored
+	}
+	for _, path := range bytes.Split(output, []byte{0}) {
+		rel := strings.TrimSuffix(filepath.ToSlash(string(path)), "/")
+		if rel != "" {
+			ignored[rel] = struct{}{}
+		}
+	}
+	return ignored
+}
+
+func repositoryPathIgnored(path string, ignored map[string]struct{}) bool {
+	path = filepath.ToSlash(path)
+	for candidate := path; candidate != "." && candidate != ""; candidate = filepath.ToSlash(filepath.Dir(candidate)) {
+		if _, ok := ignored[candidate]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 func (inventory *repositoryInventory) relativeEntries(baseDir, depth string) ([]string, []string) {

@@ -2,11 +2,47 @@ package filearch
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
+
+func TestRepositoryInventorySkipsGitIgnoredUntrackedPaths(t *testing.T) {
+	dir := t.TempDir()
+	if err := exec.Command("git", "init", "--quiet", dir).Run(); err != nil {
+		t.Skipf("git unavailable: %v", err)
+	}
+	writeFile(t, dir, ".gitignore", ".env\n*.env\n.tmp/\n")
+	writeFile(t, dir, ".env", "secret")
+	writeFile(t, dir, ".tmp/cache", "temporary")
+	writeFile(t, dir, "tracked.env", "must remain visible")
+	writeFile(t, dir, "app.go", "package app")
+	if err := exec.Command("git", "-C", dir, "add", "--force", "tracked.env").Run(); err != nil {
+		t.Fatal(err)
+	}
+
+	inventory, err := newRepositoryInventory(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files, directories := inventory.relativeEntries(".", "recursive")
+	if slices.Contains(files, ".env") {
+		t.Fatalf("ignored file was inventoried: %v", files)
+	}
+	if strings.Contains(strings.Join(directories, ","), ".tmp") {
+		t.Fatalf("ignored directory was inventoried: %v", directories)
+	}
+	if !inventory.hasRelativeFile(".", "app.go") {
+		t.Fatal("non-ignored file was not inventoried")
+	}
+	if !inventory.hasRelativeFile(".", "tracked.env") {
+		t.Fatal("tracked file matching .gitignore was not inventoried")
+	}
+}
 
 func TestRepositoryInventoryIncludesRoot(t *testing.T) {
 	inventory, err := newRepositoryInventory(t.TempDir())
