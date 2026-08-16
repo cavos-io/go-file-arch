@@ -35,8 +35,21 @@ func (cfg *Config) validateDeclarationGroupingRules() error {
 			}
 		}
 		for _, name := range rule.Files.Templates {
-			if _, ok := cfg.compiledTemplates[name]; !ok {
+			compiled, ok := cfg.compiledTemplates[name]
+			if !ok {
 				return fmt.Errorf("declaration grouping rule %q references undefined template %q", rule.ID, name)
+			}
+			captures := make(map[string]string, len(compiled.captures))
+			for _, capture := range compiled.captures {
+				captures[capture] = "example"
+			}
+			if err := validateDeclarationGroupingExpansion(rule, captures); err != nil {
+				return err
+			}
+		}
+		if len(rule.Files.Include) > 0 {
+			if err := validateDeclarationGroupingExpansion(rule, map[string]string{}); err != nil {
+				return err
 			}
 		}
 		if err := validateDeclarationSelector(rule.ID, rule.Declaration); err != nil {
@@ -60,6 +73,13 @@ func (cfg *Config) validateDeclarationGroupingRules() error {
 		if rule.Message == "" {
 			return fmt.Errorf("declaration grouping rule %q message is required", rule.ID)
 		}
+	}
+	return nil
+}
+
+func validateDeclarationGroupingExpansion(rule DeclarationGroupingRule, captures map[string]string) error {
+	if _, err := expandDeclarationSelectorChecked(rule.Declaration, captures); err != nil {
+		return fmt.Errorf("declaration grouping rule %q has invalid declaration template expansion: %w", rule.ID, err)
 	}
 	return nil
 }

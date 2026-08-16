@@ -36,6 +36,21 @@ func (cfg *Config) validatePackageVariableRules() error {
 		if err := cfg.validatePackageVariableFileSet(rule.ID, "writeFiles", effectiveWriteFiles(rule.WriteFiles)); err != nil {
 			return err
 		}
+		for _, name := range rule.Files.Templates {
+			compiled := cfg.compiledTemplates[name]
+			captures := make(map[string]string, len(compiled.captures))
+			for _, capture := range compiled.captures {
+				captures[capture] = "example"
+			}
+			if err := validatePackageVariableExpansion(rule, captures); err != nil {
+				return err
+			}
+		}
+		if len(rule.Files.Include) > 0 {
+			if err := validatePackageVariableExpansion(rule, map[string]string{}); err != nil {
+				return err
+			}
+		}
 		if err := validateDeclarationSelector(rule.ID, rule.Declaration); err != nil {
 			return err
 		}
@@ -51,6 +66,13 @@ func (cfg *Config) validatePackageVariableRules() error {
 		if rule.Message == "" {
 			return fmt.Errorf("package variable rule %q message is required", rule.ID)
 		}
+	}
+	return nil
+}
+
+func validatePackageVariableExpansion(rule PackageVariableRule, captures map[string]string) error {
+	if _, err := expandDeclarationSelectorChecked(rule.Declaration, captures); err != nil {
+		return fmt.Errorf("package variable rule %q has invalid declaration template expansion: %w", rule.ID, err)
 	}
 	return nil
 }

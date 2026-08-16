@@ -67,6 +67,26 @@ func TestDeclarationGroupingRuleValidation(t *testing.T) {
 	}
 }
 
+func TestDeclarationGroupingRuleRejectsInvalidTemplateExpansion(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+templates:
+  domain:
+    pattern: "core/{domain}/errors.go"
+    captures: {domain: "[a-z]+"}
+declarationGroupingRules:
+  - id: invalid-template
+    files: {templates: [domain]}
+    declaration: {kind: var, name: "{missing}"}
+    separateWhenCount: {max: 2}
+    message: invalid template
+`)
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "invalid declaration template expansion") {
+		t.Fatalf("LoadConfig() error = %v, want invalid declaration template expansion", err)
+	}
+}
+
 func groupingDiagnostics(t *testing.T, declarations string) []string {
 	t.Helper()
 	configPath := writeConfigFixture(t, `

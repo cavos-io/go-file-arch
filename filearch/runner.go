@@ -85,17 +85,12 @@ func Run(ctx context.Context, opts Options) error {
 	diagnostics := checkDirectoryRules(cfg, inventory)
 	diagnostics = append(diagnostics, checkDirectoryNameRules(cfg, inventory)...)
 	diagnostics = append(diagnostics, checkPathRules(cfg, inventory)...)
-	seenFiles := make(map[string]bool)
 	for _, pkg := range pkgs {
 		var files []*ast.File
 		for i, filename := range pkg.CompiledGoFiles {
 			if !fileBelongsToWorkdir(filename, cfg) {
 				continue
 			}
-			if seenFiles[filename] {
-				continue
-			}
-			seenFiles[filename] = true
 			files = append(files, pkg.Syntax[i])
 		}
 		pass := &analysis.Pass{
@@ -119,6 +114,7 @@ func Run(ctx context.Context, opts Options) error {
 			return err
 		}
 	}
+	diagnostics = deduplicateRuleDiagnostics(diagnostics)
 
 	var messages []string
 	if len(diagnostics) > 0 {
@@ -153,6 +149,19 @@ func Run(ctx context.Context, opts Options) error {
 	}
 
 	return &ViolationError{Message: strings.Join(messages, "\n")}
+}
+
+func deduplicateRuleDiagnostics(diagnostics []ruleDiagnostic) []ruleDiagnostic {
+	unique := make([]ruleDiagnostic, 0, len(diagnostics))
+	seen := make(map[ruleDiagnostic]bool, len(diagnostics))
+	for _, diagnostic := range diagnostics {
+		if seen[diagnostic] {
+			continue
+		}
+		seen[diagnostic] = true
+		unique = append(unique, diagnostic)
+	}
+	return unique
 }
 
 func fileBelongsToWorkdir(filename string, cfg *Config) bool {

@@ -118,6 +118,51 @@ func TestPackageVariableRuleValidation(t *testing.T) {
 	}
 }
 
+func TestPackageVariableRuleIncludesTestWritesByDefault(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/static\n\ngo 1.26\n")
+	writeFile(t, dir, ".architecture.yaml", `
+version: 1
+packageVariableRules:
+  - id: static-values
+    files: {include: ["**/constant.go"]}
+    declaration: {kind: var, initialized: true}
+    denyWrites: true
+    message: static package values cannot be written after initialization
+`)
+	writeFile(t, dir, "fixture/constant.go", "package fixture\nvar lookup = map[string]int{}\n")
+	writeFile(t, dir, "fixture/mutation_test.go", "package fixture\nfunc mutateForTest() { lookup[\"key\"] = 1 }\n")
+
+	err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(dir, ".architecture.yaml"),
+		Workdir:    dir,
+		Patterns:   []string{"./..."},
+	})
+	if err == nil || !strings.Contains(err.Error(), "[static-values]") || !strings.Contains(err.Error(), "mutation_test.go") {
+		t.Fatalf("Run() error = %v, want test-file static-values violation", err)
+	}
+}
+
+func TestPackageVariableRuleRejectsInvalidTemplateExpansion(t *testing.T) {
+	path := writeConfigFixture(t, `
+version: 1
+templates:
+  domain:
+    pattern: "core/{domain}/constant.go"
+    captures: {domain: "[a-z]+"}
+packageVariableRules:
+  - id: invalid-template
+    files: {templates: [domain]}
+    declaration: {kind: var, name: "{missing}"}
+    denyWrites: true
+    message: invalid template
+`)
+	_, err := LoadConfig(path)
+	if err == nil || !strings.Contains(err.Error(), "invalid declaration template expansion") {
+		t.Fatalf("LoadConfig() error = %v, want invalid declaration template expansion", err)
+	}
+}
+
 const packageVariableRuleConfig = `
 version: 1
 packageVariableRules:
