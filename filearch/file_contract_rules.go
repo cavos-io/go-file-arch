@@ -98,6 +98,8 @@ func expandDeclarationSelectorChecked(selector DeclarationSelector, captures map
 	expanded.NameNotMatches = expandTemplateValues(selector.NameNotMatches, expand)
 	expanded.Receiver.Type = expand(selector.Receiver.Type)
 	expanded.Receiver.TypeMatches = expandTemplateValues(selector.Receiver.TypeMatches, expand)
+	expanded.Receiver.TypeNotMatches = expandTemplateValues(selector.Receiver.TypeNotMatches, expand)
+	expanded.Underlying = expandTypeCondition(selector.Underlying, expand)
 	expanded.Parameters = expandParameterCondition(selector.Parameters, expand)
 	expanded.Returns = expandReturnCondition(selector.Returns, expand)
 	expanded.Embeds = expandEmbedCondition(selector.Embeds, expand)
@@ -123,6 +125,7 @@ func expandTypeCondition(condition TypeCondition, expand func(string) string) Ty
 	condition.Name = expand(condition.Name)
 	condition.Type = expand(condition.Type)
 	condition.TypeMatches = expandTemplateValues(condition.TypeMatches, expand)
+	condition.TypeNotMatches = expandTemplateValues(condition.TypeNotMatches, expand)
 	return condition
 }
 
@@ -256,6 +259,18 @@ func selectorDescription(selector DeclarationSelector) string {
 	}
 	if len(selector.Value.Matches) > 0 {
 		parts = append(parts, "value matches "+quotedList(selector.Value.Matches))
+	}
+	if selector.Initialized != nil {
+		parts = append(parts, fmt.Sprintf("initialized %t", *selector.Initialized))
+	}
+	if selector.Underlying.Type != "" {
+		parts = append(parts, fmt.Sprintf("underlying %q", selector.Underlying.Type))
+	}
+	if len(selector.Underlying.TypeMatches) > 0 {
+		parts = append(parts, "underlying matches "+quotedList(selector.Underlying.TypeMatches))
+	}
+	if len(selector.Underlying.TypeNotMatches) > 0 {
+		parts = append(parts, "underlying does not match "+quotedList(selector.Underlying.TypeNotMatches))
 	}
 	return strings.Join(parts, " ")
 }

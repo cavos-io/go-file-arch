@@ -26,6 +26,8 @@ type DeclarationSelector struct {
 	Methods        MethodCondition    `yaml:"methods"`
 	Count          CountCondition     `yaml:"count"`
 	Value          ValueCondition     `yaml:"value"`
+	Underlying     TypeCondition      `yaml:"underlying"`
+	Initialized    *bool              `yaml:"initialized"`
 }
 
 type CountCondition struct {
@@ -35,10 +37,11 @@ type CountCondition struct {
 }
 
 type TypeCondition struct {
-	Name         string   `yaml:"name"`
-	Type         string   `yaml:"type"`
-	TypeMatches  []string `yaml:"typeMatches"`
-	ExportedType *bool    `yaml:"exportedType"`
+	Name           string   `yaml:"name"`
+	Type           string   `yaml:"type"`
+	TypeMatches    []string `yaml:"typeMatches"`
+	TypeNotMatches []string `yaml:"typeNotMatches"`
+	ExportedType   *bool    `yaml:"exportedType"`
 }
 
 type TypeConditionList []TypeCondition
@@ -70,7 +73,7 @@ func (condition *TypeCondition) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind != yaml.MappingNode {
 		return fmt.Errorf("type condition must be a string or mapping")
 	}
-	allowed := map[string]bool{"name": true, "type": true, "typeMatches": true, "exportedType": true}
+	allowed := map[string]bool{"name": true, "type": true, "typeMatches": true, "typeNotMatches": true, "exportedType": true}
 	for i := 0; i < len(node.Content); i += 2 {
 		if key := node.Content[i].Value; !allowed[key] {
 			return fmt.Errorf("field %s not found in type filearch.TypeCondition", key)
@@ -81,10 +84,11 @@ func (condition *TypeCondition) UnmarshalYAML(node *yaml.Node) error {
 }
 
 type ReceiverCondition struct {
-	Present     *bool    `yaml:"present"`
-	Pointer     *bool    `yaml:"pointer"`
-	Type        string   `yaml:"type"`
-	TypeMatches []string `yaml:"typeMatches"`
+	Present        *bool    `yaml:"present"`
+	Pointer        *bool    `yaml:"pointer"`
+	Type           string   `yaml:"type"`
+	TypeMatches    []string `yaml:"typeMatches"`
+	TypeNotMatches []string `yaml:"typeNotMatches"`
 }
 
 type ParameterCondition struct {
@@ -166,17 +170,19 @@ type functionCandidate struct {
 }
 
 type declarationCandidate struct {
-	Kind       string
-	Name       string
-	Exported   bool
-	Pos        token.Pos
-	Receiver   *receiverCandidate
-	Parameters []typedCandidate
-	Results    []typedCandidate
-	Embeds     []typedCandidate
-	Fields     []fieldCandidate
-	Methods    []functionCandidate
-	Value      *string
+	Kind        string
+	Name        string
+	Exported    bool
+	Pos         token.Pos
+	Receiver    *receiverCandidate
+	Parameters  []typedCandidate
+	Results     []typedCandidate
+	Embeds      []typedCandidate
+	Fields      []fieldCandidate
+	Methods     []functionCandidate
+	Value       *string
+	Underlying  string
+	Initialized bool
 }
 
 func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declarationCandidate {
@@ -203,9 +209,13 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 			case token.TYPE:
 				for _, spec := range decl.Specs {
 					typeSpec := spec.(*ast.TypeSpec)
+					kind := declarationKind(typeSpec)
 					candidate := declarationCandidate{
-						Kind: declarationKind(typeSpec), Name: typeSpec.Name.Name,
+						Kind: kind, Name: typeSpec.Name.Name,
 						Exported: ast.IsExported(typeSpec.Name.Name), Pos: typeSpec.Pos(),
+					}
+					if kind != "alias" {
+						candidate.Underlying = renderExpr(fset, typeSpec.Type)
 					}
 					switch value := typeSpec.Type.(type) {
 					case *ast.StructType:
@@ -223,13 +233,14 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 				}
 				for _, spec := range decl.Specs {
 					valueSpec := spec.(*ast.ValueSpec)
+					initialized := len(valueSpec.Values) > 0
 					for i, name := range valueSpec.Names {
 						var value *string
 						if kind == "const" && i < len(valueSpec.Values) {
 							value = literalValue(valueSpec.Values[i])
 						}
 						candidates = append(candidates, declarationCandidate{
-							Kind: kind, Name: name.Name, Exported: ast.IsExported(name.Name), Pos: name.Pos(), Value: value,
+							Kind: kind, Name: name.Name, Exported: ast.IsExported(name.Name), Pos: name.Pos(), Value: value, Initialized: initialized,
 						})
 					}
 				}
@@ -379,6 +390,12 @@ func declarationMatches(candidate declarationCandidate, selector DeclarationSele
 	if matchesRegexAny(candidate.Name, selector.NameNotMatches) {
 		return false
 	}
+	if underlyingConfigured(selector.Underlying) && !typeMatches(typedCandidate{Type: candidate.Underlying}, selector.Underlying) {
+		return false
+	}
+	if selector.Initialized != nil && candidate.Initialized != *selector.Initialized {
+		return false
+	}
 	if !receiverMatches(candidate.Receiver, selector.Receiver) {
 		return false
 	}
@@ -455,7 +472,7 @@ func fieldMatches(field fieldCandidate, selector FieldSelector) bool {
 }
 
 func receiverMatches(candidate *receiverCandidate, condition ReceiverCondition) bool {
-	configured := condition.Present != nil || condition.Pointer != nil || condition.Type != "" || len(condition.TypeMatches) > 0
+	configured := receiverConfigured(condition)
 	if !configured {
 		return true
 	}
@@ -471,7 +488,10 @@ func receiverMatches(candidate *receiverCandidate, condition ReceiverCondition) 
 	if condition.Type != "" && candidate.Type != condition.Type {
 		return false
 	}
-	return len(condition.TypeMatches) == 0 || matchesRegexAny(candidate.Type, condition.TypeMatches)
+	if len(condition.TypeMatches) > 0 && !matchesRegexAny(candidate.Type, condition.TypeMatches) {
+		return false
+	}
+	return !matchesRegexAny(candidate.Type, condition.TypeNotMatches)
 }
 
 func typedSequenceMatches(values []typedCandidate, count CountCondition, first *TypeCondition, contains []TypeCondition, all *TypeCondition) bool {
@@ -511,6 +531,9 @@ func typeMatches(value typedCandidate, condition TypeCondition) bool {
 		return false
 	}
 	if len(condition.TypeMatches) > 0 && !matchesRegexAny(value.Type, condition.TypeMatches) {
+		return false
+	}
+	if matchesRegexAny(value.Type, condition.TypeNotMatches) {
 		return false
 	}
 	if condition.ExportedType != nil && exportedType(value.Type) != *condition.ExportedType {
@@ -614,7 +637,7 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 		return fmt.Errorf("file contract rule %q: receiver is only valid for func", ruleID)
 	}
 	if selector.Receiver.Present != nil && !*selector.Receiver.Present &&
-		(selector.Receiver.Pointer != nil || selector.Receiver.Type != "" || len(selector.Receiver.TypeMatches) > 0) {
+		(selector.Receiver.Pointer != nil || selector.Receiver.Type != "" || len(selector.Receiver.TypeMatches) > 0 || len(selector.Receiver.TypeNotMatches) > 0) {
 		return fmt.Errorf("file contract rule %q: receiver.present false cannot have receiver shape constraints", ruleID)
 	}
 	if selector.Kind != "func" && parameterConfigured(selector.Parameters) {
@@ -635,6 +658,12 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 	if selector.Kind != "const" && (selector.Value.Equals != nil || len(selector.Value.Matches) > 0) {
 		return fmt.Errorf("file contract rule %q: value is only valid for const", ruleID)
 	}
+	if selector.Kind != "type" && underlyingConfigured(selector.Underlying) {
+		return fmt.Errorf("file contract rule %q: underlying is only valid for type", ruleID)
+	}
+	if selector.Initialized != nil && selector.Kind != "var" && selector.Kind != "const" {
+		return fmt.Errorf("file contract rule %q: initialized is only valid for var or const", ruleID)
+	}
 	if err := validateCount(ruleID, "count", selector.Count); err != nil {
 		return err
 	}
@@ -645,6 +674,12 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 		return err
 	}
 	if err := validateRegexes(ruleID, "receiver.typeMatches", selector.Receiver.TypeMatches); err != nil {
+		return err
+	}
+	if err := validateRegexes(ruleID, "receiver.typeNotMatches", selector.Receiver.TypeNotMatches); err != nil {
+		return err
+	}
+	if err := validateTypeCondition(ruleID, "underlying", selector.Underlying); err != nil {
 		return err
 	}
 	if err := validateParameterCondition(ruleID, "parameters", selector.Parameters); err != nil {
@@ -763,11 +798,18 @@ func validateTypeConditions(ruleID, name string, first *TypeCondition, contains 
 		conditions = append(conditions, *all)
 	}
 	for i, condition := range conditions {
-		if err := validateRegexes(ruleID, fmt.Sprintf("%s.typeConditions[%d].typeMatches", name, i), condition.TypeMatches); err != nil {
+		if err := validateTypeCondition(ruleID, fmt.Sprintf("%s.typeConditions[%d]", name, i), condition); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func validateTypeCondition(ruleID, name string, condition TypeCondition) error {
+	if err := validateRegexes(ruleID, name+".typeMatches", condition.TypeMatches); err != nil {
+		return err
+	}
+	return validateRegexes(ruleID, name+".typeNotMatches", condition.TypeNotMatches)
 }
 
 func validateCount(ruleID, name string, condition CountCondition) error {
@@ -786,7 +828,10 @@ func validateCount(ruleID, name string, condition CountCondition) error {
 }
 
 func receiverConfigured(value ReceiverCondition) bool {
-	return value.Present != nil || value.Pointer != nil || value.Type != "" || len(value.TypeMatches) > 0
+	return value.Present != nil || value.Pointer != nil || value.Type != "" || len(value.TypeMatches) > 0 || len(value.TypeNotMatches) > 0
+}
+func underlyingConfigured(value TypeCondition) bool {
+	return value.Name != "" || value.Type != "" || len(value.TypeMatches) > 0 || len(value.TypeNotMatches) > 0 || value.ExportedType != nil
 }
 func parameterConfigured(value ParameterCondition) bool {
 	return value.First != nil || len(value.Contains) > 0 || value.All != nil || countConfigured(value.Count)

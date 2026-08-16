@@ -78,6 +78,50 @@ func helper() bool { return true }
 	}
 }
 
+func TestDeclarationSelectorMatchesUnderlyingAndInitialization(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "declarations.go", `package declarations
+type Status string
+type Handler func() error
+var ready = true
+var unset bool
+var first, second = pair()
+func pair() (int, int) { return 0, 0 }
+type Service struct{}
+func (Service) Run() {}
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidates := extractDeclarationCandidates(fset, file)
+
+	selectors := []DeclarationSelector{
+		{Kind: "type", Name: "Status", Underlying: TypeCondition{Type: "string"}},
+		{Kind: "type", Name: "Handler", Underlying: TypeCondition{TypeMatches: []string{`^func\(`}, TypeNotMatches: []string{`string`}}},
+		{Kind: "var", Name: "ready", Initialized: testBoolPointer(true)},
+		{Kind: "var", Name: "unset", Initialized: testBoolPointer(false)},
+		{Kind: "var", Name: "first", Initialized: testBoolPointer(true)},
+		{Kind: "var", Name: "second", Initialized: testBoolPointer(true)},
+		{Kind: "func", Name: "Run", Receiver: ReceiverCondition{TypeMatches: []string{"Service"}, TypeNotMatches: []string{"Legacy"}}},
+	}
+	for _, selector := range selectors {
+		if !anyDeclarationMatches(candidates, selector) {
+			t.Fatalf("selector %#v did not match %#v", selector, candidates)
+		}
+	}
+
+	if anyDeclarationMatches(candidates, DeclarationSelector{
+		Kind: "type", Name: "Status", Underlying: TypeCondition{TypeNotMatches: []string{"string"}},
+	}) {
+		t.Fatal("negative underlying type pattern matched Status")
+	}
+	if anyDeclarationMatches(candidates, DeclarationSelector{
+		Kind: "func", Name: "Run", Receiver: ReceiverCondition{TypeNotMatches: []string{"Service"}},
+	}) {
+		t.Fatal("negative receiver type pattern matched Service.Run")
+	}
+}
+
 func TestSelectorDescriptionIncludesConfiguredConstraints(t *testing.T) {
 	description := selectorDescription(DeclarationSelector{
 		Kind:           "func",
@@ -247,6 +291,10 @@ func TestDeclarationSelectorValidationRejectsInvalidStructure(t *testing.T) {
 		{DeclarationSelector{Kind: "interface", Methods: MethodCondition{All: &FunctionCondition{NameMatches: []string{"["}}}}, "methods.all.nameMatches regex"},
 		{DeclarationSelector{Kind: "func", Returns: ReturnCondition{Contains: TypeConditionList{{TypeMatches: []string{"["}}}}}, "returns.typeConditions"},
 		{DeclarationSelector{Kind: "struct", Fields: FieldCondition{Contains: []FieldSelector{{TagMatches: []string{"["}}}}}, "fields.contains[0].tagMatches regex"},
+		{DeclarationSelector{Kind: "struct", Underlying: TypeCondition{Type: "string"}}, "underlying is only valid for type"},
+		{DeclarationSelector{Kind: "func", Initialized: testBoolPointer(true)}, "initialized is only valid for var or const"},
+		{DeclarationSelector{Kind: "type", Underlying: TypeCondition{TypeMatches: []string{"["}}}, "underlying.typeMatches regex"},
+		{DeclarationSelector{Kind: "func", Receiver: ReceiverCondition{TypeNotMatches: []string{"["}}}, "receiver.typeNotMatches regex"},
 	}
 	for _, test := range tests {
 		err := validateDeclarationSelector("bad", test.selector)

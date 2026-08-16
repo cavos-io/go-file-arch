@@ -217,16 +217,30 @@ Declaration selectors support:
 | `methods` | interface method `count`, `contains`, or `all` |
 | `count` | matching declarations: `equals`, `min`, `max` |
 | `value` | literal constant `equals` or `matches` |
+| `underlying` | declared type condition; valid for `kind: type` |
+| `initialized` | initializer presence; valid for `kind: var` or `kind: const` |
 
 `alias` matches declarations written as `type A = B`. Named types such as
 `type A B` remain `type` declarations.
 
 A type condition accepts a legacy scalar such as `error` or a mapping with
-`name`, `type`, `typeMatches`, and `exportedType`. A method condition
-uses `name`, `nameMatches`, `parameters`, and `returns`. Configured
+`name`, `type`, `typeMatches`, `typeNotMatches`, and `exportedType`. A method
+condition uses `name`, `nameMatches`, `parameters`, and `returns`. Configured
 fields use AND semantics; `contains` requires every listed condition. A struct
 field condition supports `name`, `nameMatches`, `type`, `typeMatches`,
 `exported`, `exportedType`, and `tagMatches`.
+
+```yaml
+deny:
+  declarations:
+    - kind: type
+      underlying:
+        typeMatches: ["^(string|bool|u?int(8|16|32|64)?)$"]
+    - kind: var
+      exported: false
+      initialized: true
+```
+
 Omitted declaration count means at least one match.
 
 Matching is syntactic. It uses rendered Go AST types and does not perform type
