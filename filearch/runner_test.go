@@ -34,6 +34,38 @@ contentRules:
 	}
 }
 
+func TestRunRejectsAliases(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, dir, "go.mod", "module example.com/aliases\n\ngo 1.26\n")
+	writeFile(t, dir, ".architecture.yaml", `
+version: 1
+fileContractRules:
+  - id: no-aliases
+    files: {include: ["**/*.go"]}
+    deny:
+      declarations:
+        - kind: alias
+    message: aliases are denied
+`)
+	writeFile(t, dir, "types.go", `package aliases
+type Alias = string
+type Status string
+`)
+
+	err := Run(context.Background(), Options{
+		ConfigPath: filepath.Join(dir, ".architecture.yaml"),
+		Workdir:    dir,
+		Patterns:   []string{"./..."},
+	})
+	var violation *ViolationError
+	if !errors.As(err, &violation) {
+		t.Fatalf("Run() error = %T %v, want *ViolationError", err, err)
+	}
+	if got := err.Error(); !strings.Contains(got, `no-aliases`) || !strings.Contains(got, `Alias`) || strings.Contains(got, `Status`) {
+		t.Fatalf("Run() error = %v, want only Alias reported by no-aliases", err)
+	}
+}
+
 func TestRunAnalyzesTestFiles(t *testing.T) {
 	dir := t.TempDir()
 	writeFile(t, dir, "go.mod", "module example.com/tests\n\ngo 1.25\n")

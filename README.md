@@ -202,7 +202,7 @@ Declaration selectors support:
 
 | Field | Contract |
 |---|---|
-| `kind` | `interface`, `struct`, `func`, `var`, `const`, or `type` |
+| `kind` | `interface`, `struct`, `func`, `var`, `const`, `type`, or `alias` |
 | `name` | exact name |
 | `nameMatches` / `nameNotMatches` | Go regular expressions |
 | `exported` | declaration visibility |
@@ -213,6 +213,9 @@ Declaration selectors support:
 | `methods` | interface method `count`, `contains`, or `all` |
 | `count` | matching declarations: `equals`, `min`, `max` |
 | `value` | literal constant `equals` or `matches` |
+
+`alias` matches declarations written as `type A = B`. Named types such as
+`type A B` remain `type` declarations.
 
 A type condition accepts a legacy scalar such as `error` or a mapping with
 `name`, `type`, `typeMatches`, and `exportedType`. A method condition

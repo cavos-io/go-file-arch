@@ -7,6 +7,31 @@ import (
 	"testing"
 )
 
+func TestDeclarationExtractionDistinguishesAliasesFromNamedTypes(t *testing.T) {
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, "types.go", `package types
+type Imported = Other
+type StructAlias = struct{ Name string }
+type Status string
+type Record struct{ Name string }
+`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	candidates := extractDeclarationCandidates(fset, file)
+	for _, selector := range []DeclarationSelector{
+		{Kind: "alias", Name: "Imported"},
+		{Kind: "alias", Name: "StructAlias"},
+		{Kind: "type", Name: "Status"},
+		{Kind: "struct", Name: "Record"},
+	} {
+		if !anyDeclarationMatches(candidates, selector) {
+			t.Fatalf("selector %#v did not match %#v", selector, candidates)
+		}
+	}
+}
+
 func TestDeclarationSelectorMatchesNamesResultsAndLiterals(t *testing.T) {
 	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, "feature.go", `package feature

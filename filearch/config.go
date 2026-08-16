@@ -82,6 +82,7 @@ var validDeclarationKinds = map[string]bool{
 	"var":       true,
 	"const":     true,
 	"type":      true,
+	"alias":     true,
 }
 
 func LoadConfig(path string) (*Config, error) {

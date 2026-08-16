@@ -123,7 +123,10 @@ func
 var
 const
 type
+alias
 ```
+
+`alias` means `type A = B`; a named type such as `type A B` remains `type`.
 
 Rules should support:
 

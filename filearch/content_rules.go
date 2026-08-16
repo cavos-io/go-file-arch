@@ -106,6 +106,9 @@ func valueSpecNames(decl *ast.GenDecl) string {
 }
 
 func declarationKind(spec *ast.TypeSpec) string {
+	if spec.Assign.IsValid() {
+		return "alias"
+	}
 	switch spec.Type.(type) {
 	case *ast.InterfaceType:
 		return "interface"
