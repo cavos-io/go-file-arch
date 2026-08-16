@@ -270,6 +270,46 @@ dependencyRules:
 	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
 }
 
+func TestAnalyzerReportsDependencyToFileOwnedPackage(t *testing.T) {
+	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
+		"core/user/service.go": `package user
+
+import "internal/mocks" // want ` + "`\\[dependencyRules\\.core\\].*component test_support.*internal/mocks`" + `
+
+func Use() mocks.Widget { return mocks.Widget{} }
+`,
+		"internal/mocks/widget_mock.go": `package mocks
+
+type Widget struct{}
+`,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+
+	configPath := filepath.Join(gopath, "go-file-arch.yml")
+	err = os.WriteFile(configPath, []byte(`
+version: 1
+workdir: src
+components:
+  core:
+    files: {include: ["core/**/*.go"]}
+  test_support:
+    files: {include: ["**/*_test.go", "internal/mocks/**/*.go"]}
+dependencyRules:
+  core:
+    mayDependOn: [core]
+  test_support:
+    mayDependOn: [core, test_support]
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	analysistest.Run(t, gopath, NewAnalyzer(configPath), "core/user")
+}
+
 func TestAnalyzerIgnoresUnclassifiedImportsWithoutImportRules(t *testing.T) {
 	gopath, cleanup, err := analysistest.WriteFiles(map[string]string{
 		"modules/one/feature.go": `package one

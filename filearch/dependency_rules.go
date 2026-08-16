@@ -84,7 +84,7 @@ func buildDependencyGraph(file *ast.File, cfg *Config, paths []string) dependenc
 		if !ok {
 			continue
 		}
-		targetComponent, ok := cfg.matchComponent(targetPath)
+		targetComponent, ok := cfg.matchPackageComponent(targetPath)
 		if !ok {
 			continue
 		}

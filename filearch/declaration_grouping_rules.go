@@ -122,7 +122,7 @@ func checkDeclarationGroupingRules(pass *analysis.Pass, file *ast.File, cfg *Con
 			if countConfigured(rule.SeparateWhenCount) && countMatches(len(selected), rule.SeparateWhenCount, false) {
 				for _, candidate := range selected {
 					if candidate.Grouped {
-						reportGroupingViolation(pass, rule, candidate.Pos, "must use a separate declaration", seen)
+						reportGroupingViolation(pass, rule, candidate, "must use a separate declaration", seen)
 					}
 				}
 			}
@@ -154,15 +154,15 @@ func checkSingleDeclarationGroup(pass *analysis.Pass, rule DeclarationGroupingRu
 			}
 			reportedGroups[candidate.GroupID] = true
 		}
-		reportGroupingViolation(pass, rule, candidate.Pos, "must share one declaration group containing only selected declarations", seen)
+		reportGroupingViolation(pass, rule, candidate, "must share one declaration group containing only selected declarations", seen)
 	}
 }
 
-func reportGroupingViolation(pass *analysis.Pass, rule DeclarationGroupingRule, pos token.Pos, reason string, seen map[string]bool) {
-	key := fmt.Sprintf("%d:%s", pos, reason)
+func reportGroupingViolation(pass *analysis.Pass, rule DeclarationGroupingRule, candidate declarationCandidate, reason string, seen map[string]bool) {
+	key := fmt.Sprintf("%d:%s", candidate.Pos, reason)
 	if seen[key] {
 		return
 	}
 	seen[key] = true
-	pass.Reportf(pos, "[%s]: %s %s", rule.ID, rule.Message, reason)
+	pass.Reportf(candidate.Pos, "[%s]: %s declaration %s %s", rule.ID, rule.Message, candidate.Name, reason)
 }

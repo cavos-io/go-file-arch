@@ -41,6 +41,9 @@ func TestDeclarationGroupingRule(t *testing.T) {
 				if !strings.Contains(diagnostic, "[error-grouping]") {
 					t.Fatalf("diagnostic = %q, want error-grouping rule ID", diagnostic)
 				}
+				if !strings.Contains(diagnostic, "Err") {
+					t.Fatalf("diagnostic = %q, want affected declaration name", diagnostic)
+				}
 			}
 		})
 	}
