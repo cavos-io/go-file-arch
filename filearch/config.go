@@ -11,20 +11,21 @@ import (
 )
 
 type Config struct {
-	Version            int                       `yaml:"version"`
-	Workdir            string                    `yaml:"workdir"`
-	Components         map[string]Component      `yaml:"components"`
-	ComponentOptions   ComponentOptions          `yaml:"componentOptions"`
-	CommonComponents   []string                  `yaml:"commonComponents"`
-	DependencyRules    map[string]DependencyRule `yaml:"dependencyRules"`
-	ContentRules       []ContentRule             `yaml:"contentRules"`
-	FileNameRules      []FileNameRule            `yaml:"fileNameRules"`
-	DirectoryNameRules []DirectoryNameRule       `yaml:"directoryNameRules"`
-	DirectoryRules     []DirectoryRule           `yaml:"directoryRules"`
-	FileContractRules  []FileContractRule        `yaml:"fileContractRules"`
-	PathRules          []PathRule                `yaml:"pathRules"`
-	ImportRules        []ImportRule              `yaml:"importRules"`
-	Templates          map[string]PathTemplate   `yaml:"templates"`
+	Version                  int                       `yaml:"version"`
+	Workdir                  string                    `yaml:"workdir"`
+	Components               map[string]Component      `yaml:"components"`
+	ComponentOptions         ComponentOptions          `yaml:"componentOptions"`
+	CommonComponents         []string                  `yaml:"commonComponents"`
+	DependencyRules          map[string]DependencyRule `yaml:"dependencyRules"`
+	ContentRules             []ContentRule             `yaml:"contentRules"`
+	FileNameRules            []FileNameRule            `yaml:"fileNameRules"`
+	DirectoryNameRules       []DirectoryNameRule       `yaml:"directoryNameRules"`
+	DirectoryRules           []DirectoryRule           `yaml:"directoryRules"`
+	FileContractRules        []FileContractRule        `yaml:"fileContractRules"`
+	PathRules                []PathRule                `yaml:"pathRules"`
+	ImportRules              []ImportRule              `yaml:"importRules"`
+	DeclarationGroupingRules []DeclarationGroupingRule `yaml:"declarationGroupingRules"`
+	Templates                map[string]PathTemplate   `yaml:"templates"`
 
 	baseDir string
 
@@ -177,6 +178,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validateImportRules(); err != nil {
 		return err
 	}
+	if err := cfg.validateDeclarationGroupingRules(); err != nil {
+		return err
+	}
 	return cfg.validateUniqueRuleIDs()
 }
 
@@ -251,6 +255,11 @@ func (cfg *Config) validateUniqueRuleIDs() error {
 		}
 	}
 	for _, rule := range cfg.ImportRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.DeclarationGroupingRules {
 		if err := check(rule.ID); err != nil {
 			return err
 		}

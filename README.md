@@ -247,6 +247,27 @@ Matching is syntactic. It uses rendered Go AST types and does not perform type
 identity, assignability, call-graph, or data-flow analysis. Constant matching
 supports literal initializers but does not evaluate expressions or `iota`.
 
+`declarationGroupingRules` apply count-dependent layout without knowing a
+domain convention:
+
+```yaml
+declarationGroupingRules:
+  - id: selected-variable-grouping
+    files:
+      include: ["**/state.go"]
+    declaration:
+      kind: var
+      nameMatches: ["^State[A-Z]"]
+    separateWhenCount: {max: 2}
+    singleGroupWhenCount: {min: 3}
+    message: selected variables use deterministic grouping
+```
+
+When the separate threshold matches, selected declarations cannot use a
+parenthesized group. When the single-group threshold matches, they must share
+one group containing no unselected declarations. Threshold ranges cannot
+overlap.
+
 ### Complete import rules
 
 Import rules inspect standard-library, matched internal, unmatched internal,

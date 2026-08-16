@@ -183,6 +183,9 @@ type declarationCandidate struct {
 	Value       *string
 	Underlying  string
 	Initialized bool
+	GroupID     token.Pos
+	Grouped     bool
+	GroupSize   int
 }
 
 func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declarationCandidate {
@@ -205,6 +208,9 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 			}
 			candidates = append(candidates, candidate)
 		case *ast.GenDecl:
+			groupID := decl.Pos()
+			grouped := decl.Lparen.IsValid()
+			groupSize := declarationGroupSize(decl)
 			switch decl.Tok {
 			case token.TYPE:
 				for _, spec := range decl.Specs {
@@ -213,6 +219,7 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 					candidate := declarationCandidate{
 						Kind: kind, Name: typeSpec.Name.Name,
 						Exported: ast.IsExported(typeSpec.Name.Name), Pos: typeSpec.Pos(),
+						GroupID: groupID, Grouped: grouped, GroupSize: groupSize,
 					}
 					if kind != "alias" {
 						candidate.Underlying = renderExpr(fset, typeSpec.Type)
@@ -241,6 +248,7 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 						}
 						candidates = append(candidates, declarationCandidate{
 							Kind: kind, Name: name.Name, Exported: ast.IsExported(name.Name), Pos: name.Pos(), Value: value, Initialized: initialized,
+							GroupID: groupID, Grouped: grouped, GroupSize: groupSize,
 						})
 					}
 				}
@@ -248,6 +256,19 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 		}
 	}
 	return candidates
+}
+
+func declarationGroupSize(decl *ast.GenDecl) int {
+	size := 0
+	for _, spec := range decl.Specs {
+		switch spec := spec.(type) {
+		case *ast.TypeSpec:
+			size++
+		case *ast.ValueSpec:
+			size += len(spec.Names)
+		}
+	}
+	return size
 }
 
 func extractFunction(fset *token.FileSet, name string, function *ast.FuncType) functionCandidate {
