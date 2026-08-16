@@ -86,7 +86,10 @@ type Handler func() error
 var ready = true
 var unset bool
 var first, second = pair()
+var hidden = errors.New("hidden")
+var wrapped = decorate(errors.New("nested"))
 func pair() (int, int) { return 0, 0 }
+func decorate(error) error { return nil }
 type Service struct{}
 func (Service) Run() {}
 `, 0)
@@ -102,6 +105,8 @@ func (Service) Run() {}
 		{Kind: "var", Name: "unset", Initialized: testBoolPointer(false)},
 		{Kind: "var", Name: "first", Initialized: testBoolPointer(true)},
 		{Kind: "var", Name: "second", Initialized: testBoolPointer(true)},
+		{Kind: "var", Name: "hidden", InitializerCalls: []string{`^errors\.New$`}},
+		{Kind: "var", Name: "wrapped", InitializerCalls: []string{`^errors\.New$`}},
 		{Kind: "func", Name: "Run", Receiver: ReceiverCondition{TypeMatches: []string{"Service"}, TypeNotMatches: []string{"Legacy"}}},
 	}
 	for _, selector := range selectors {
@@ -293,6 +298,8 @@ func TestDeclarationSelectorValidationRejectsInvalidStructure(t *testing.T) {
 		{DeclarationSelector{Kind: "struct", Fields: FieldCondition{Contains: []FieldSelector{{TagMatches: []string{"["}}}}}, "fields.contains[0].tagMatches regex"},
 		{DeclarationSelector{Kind: "struct", Underlying: TypeCondition{Type: "string"}}, "underlying is only valid for type"},
 		{DeclarationSelector{Kind: "func", Initialized: testBoolPointer(true)}, "initialized is only valid for var or const"},
+		{DeclarationSelector{Kind: "func", InitializerCalls: []string{"errors.New"}}, "initializerCalls is only valid for var or const"},
+		{DeclarationSelector{Kind: "var", InitializerCalls: []string{"["}}, "initializerCalls regex"},
 		{DeclarationSelector{Kind: "type", Underlying: TypeCondition{TypeMatches: []string{"["}}}, "underlying.typeMatches regex"},
 		{DeclarationSelector{Kind: "func", Receiver: ReceiverCondition{TypeNotMatches: []string{"["}}}, "receiver.typeNotMatches regex"},
 	}

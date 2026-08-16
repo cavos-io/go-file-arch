@@ -13,21 +13,22 @@ import (
 )
 
 type DeclarationSelector struct {
-	Kind           string             `yaml:"kind"`
-	Name           string             `yaml:"name"`
-	NameMatches    []string           `yaml:"nameMatches"`
-	NameNotMatches []string           `yaml:"nameNotMatches"`
-	Exported       *bool              `yaml:"exported"`
-	Receiver       ReceiverCondition  `yaml:"receiver"`
-	Parameters     ParameterCondition `yaml:"parameters"`
-	Returns        ReturnCondition    `yaml:"returns"`
-	Embeds         EmbedCondition     `yaml:"embeds"`
-	Fields         FieldCondition     `yaml:"fields"`
-	Methods        MethodCondition    `yaml:"methods"`
-	Count          CountCondition     `yaml:"count"`
-	Value          ValueCondition     `yaml:"value"`
-	Underlying     TypeCondition      `yaml:"underlying"`
-	Initialized    *bool              `yaml:"initialized"`
+	Kind             string             `yaml:"kind"`
+	Name             string             `yaml:"name"`
+	NameMatches      []string           `yaml:"nameMatches"`
+	NameNotMatches   []string           `yaml:"nameNotMatches"`
+	Exported         *bool              `yaml:"exported"`
+	Receiver         ReceiverCondition  `yaml:"receiver"`
+	Parameters       ParameterCondition `yaml:"parameters"`
+	Returns          ReturnCondition    `yaml:"returns"`
+	Embeds           EmbedCondition     `yaml:"embeds"`
+	Fields           FieldCondition     `yaml:"fields"`
+	Methods          MethodCondition    `yaml:"methods"`
+	Count            CountCondition     `yaml:"count"`
+	Value            ValueCondition     `yaml:"value"`
+	Underlying       TypeCondition      `yaml:"underlying"`
+	Initialized      *bool              `yaml:"initialized"`
+	InitializerCalls []string           `yaml:"initializerCalls"`
 }
 
 type CountCondition struct {
@@ -170,22 +171,23 @@ type functionCandidate struct {
 }
 
 type declarationCandidate struct {
-	Kind        string
-	Name        string
-	Exported    bool
-	Pos         token.Pos
-	Receiver    *receiverCandidate
-	Parameters  []typedCandidate
-	Results     []typedCandidate
-	Embeds      []typedCandidate
-	Fields      []fieldCandidate
-	Methods     []functionCandidate
-	Value       *string
-	Underlying  string
-	Initialized bool
-	GroupID     token.Pos
-	Grouped     bool
-	GroupSize   int
+	Kind             string
+	Name             string
+	Exported         bool
+	Pos              token.Pos
+	Receiver         *receiverCandidate
+	Parameters       []typedCandidate
+	Results          []typedCandidate
+	Embeds           []typedCandidate
+	Fields           []fieldCandidate
+	Methods          []functionCandidate
+	Value            *string
+	Underlying       string
+	Initialized      bool
+	InitializerCalls []string
+	GroupID          token.Pos
+	Grouped          bool
+	GroupSize        int
 }
 
 func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declarationCandidate {
@@ -246,9 +248,16 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 						if kind == "const" && i < len(valueSpec.Values) {
 							value = literalValue(valueSpec.Values[i])
 						}
+						var initializerCalls []string
+						if len(valueSpec.Values) == 1 {
+							initializerCalls = calledFunctions(fset, valueSpec.Values[0])
+						} else if i < len(valueSpec.Values) {
+							initializerCalls = calledFunctions(fset, valueSpec.Values[i])
+						}
 						candidates = append(candidates, declarationCandidate{
 							Kind: kind, Name: name.Name, Exported: ast.IsExported(name.Name), Pos: name.Pos(), Value: value, Initialized: initialized,
-							GroupID: groupID, Grouped: grouped, GroupSize: groupSize,
+							InitializerCalls: initializerCalls,
+							GroupID:          groupID, Grouped: grouped, GroupSize: groupSize,
 						})
 					}
 				}
@@ -256,6 +265,18 @@ func extractDeclarationCandidates(fset *token.FileSet, file *ast.File) []declara
 		}
 	}
 	return candidates
+}
+
+func calledFunctions(fset *token.FileSet, expression ast.Expr) []string {
+	var calls []string
+	ast.Inspect(expression, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if ok {
+			calls = append(calls, renderExpr(fset, call.Fun))
+		}
+		return true
+	})
+	return calls
 }
 
 func declarationGroupSize(decl *ast.GenDecl) int {
@@ -415,6 +436,9 @@ func declarationMatches(candidate declarationCandidate, selector DeclarationSele
 		return false
 	}
 	if selector.Initialized != nil && candidate.Initialized != *selector.Initialized {
+		return false
+	}
+	if len(selector.InitializerCalls) > 0 && !matchesRegexAnyOf(candidate.InitializerCalls, selector.InitializerCalls) {
 		return false
 	}
 	if !receiverMatches(candidate.Receiver, selector.Receiver) {
@@ -685,6 +709,9 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 	if selector.Initialized != nil && selector.Kind != "var" && selector.Kind != "const" {
 		return fmt.Errorf("file contract rule %q: initialized is only valid for var or const", ruleID)
 	}
+	if len(selector.InitializerCalls) > 0 && selector.Kind != "var" && selector.Kind != "const" {
+		return fmt.Errorf("file contract rule %q: initializerCalls is only valid for var or const", ruleID)
+	}
 	if err := validateCount(ruleID, "count", selector.Count); err != nil {
 		return err
 	}
@@ -692,6 +719,9 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 		return err
 	}
 	if err := validateRegexes(ruleID, "nameNotMatches", selector.NameNotMatches); err != nil {
+		return err
+	}
+	if err := validateRegexes(ruleID, "initializerCalls", selector.InitializerCalls); err != nil {
 		return err
 	}
 	if err := validateRegexes(ruleID, "receiver.typeMatches", selector.Receiver.TypeMatches); err != nil {
@@ -722,6 +752,15 @@ func validateDeclarationSelector(ruleID string, selector DeclarationSelector) er
 		return err
 	}
 	return nil
+}
+
+func matchesRegexAnyOf(values, patterns []string) bool {
+	for _, value := range values {
+		if matchesRegexAny(value, patterns) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateFieldCondition(ruleID string, condition FieldCondition) error {

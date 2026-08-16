@@ -263,6 +263,9 @@ func selectorDescription(selector DeclarationSelector) string {
 	if selector.Initialized != nil {
 		parts = append(parts, fmt.Sprintf("initialized %t", *selector.Initialized))
 	}
+	if len(selector.InitializerCalls) > 0 {
+		parts = append(parts, "initializer calls "+quotedList(selector.InitializerCalls))
+	}
 	if selector.Underlying.Type != "" {
 		parts = append(parts, fmt.Sprintf("underlying %q", selector.Underlying.Type))
 	}
