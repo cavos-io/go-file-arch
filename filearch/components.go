@@ -110,7 +110,8 @@ func (cfg *Config) matchPackageComponent(path string) (string, bool) {
 		excluded := false
 		for _, pattern := range component.Files.Exclude {
 			pattern = filepath.ToSlash(pattern)
-			if filepath.Base(pattern) == "*.go" && matchGlob(path, componentFilePackagePattern(pattern)) {
+			packagePattern, ok := componentFilePackagePattern(pattern)
+			if ok && matchGlob(path, packagePattern) {
 				excluded = true
 				break
 			}
@@ -120,7 +121,8 @@ func (cfg *Config) matchPackageComponent(path string) (string, bool) {
 		}
 		for _, pattern := range component.Files.Include {
 			pattern = filepath.ToSlash(pattern)
-			if !matchGlob(path, componentFilePackagePattern(pattern)) {
+			packagePattern, ok := componentFilePackagePattern(pattern)
+			if !ok || !matchGlob(path, packagePattern) {
 				continue
 			}
 			candidate := componentMatch{
@@ -139,12 +141,15 @@ func (cfg *Config) matchPackageComponent(path string) (string, bool) {
 	return best.name, best.ok
 }
 
-func componentFilePackagePattern(pattern string) string {
+func componentFilePackagePattern(pattern string) (string, bool) {
+	if filepath.Base(pattern) != "*.go" {
+		return "", false
+	}
 	dir := filepath.ToSlash(filepath.Dir(pattern))
 	if dir == "." {
-		return ""
+		dir = ""
 	}
-	return dir
+	return dir, true
 }
 
 func (match componentMatch) moreSpecificThan(other componentMatch) bool {

@@ -34,7 +34,7 @@ func TestClassifyImport(t *testing.T) {
 	}
 }
 
-func TestClassifyImportMatchesPackageFromFileComponentPatterns(t *testing.T) {
+func TestClassifyImportMatchesPackageFromBroadFilePatterns(t *testing.T) {
 	cfg := &Config{
 		modulePath: "example.com/project",
 		Components: map[string]Component{
@@ -47,11 +47,15 @@ func TestClassifyImportMatchesPackageFromFileComponentPatterns(t *testing.T) {
 		},
 	}
 
+	root := classifyImport("example.com/project", cfg)
+	if root.Category != importCategoryUnmatchedInternal || root.Component != "" {
+		t.Fatalf("classifyImport(root) = %#v, exact app.go must remain source-only", root)
+	}
+
 	for _, test := range []struct {
 		path      string
 		component string
 	}{
-		{"example.com/project", "composition"},
 		{"example.com/project/core/user", "core"},
 		{"example.com/project/core/user/model", "core_model"},
 	} {

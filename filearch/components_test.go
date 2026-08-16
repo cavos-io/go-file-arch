@@ -36,6 +36,50 @@ func TestComponentMatchesReturnsAllOverlapsInStableOrder(t *testing.T) {
 	}
 }
 
+func TestTestFileComponentDoesNotOwnProductionPackages(t *testing.T) {
+	cfg := &Config{Components: map[string]Component{
+		"test_support": {Files: FileSet{Include: []string{"**/*_test.go", "internal/mocks/**/*.go"}}},
+		"core": {Files: FileSet{
+			Include: []string{"core/**/*.go"},
+			Exclude: []string{"**/*_test.go"},
+		}},
+	}}
+
+	for _, test := range []struct {
+		path string
+		want []string
+	}{
+		{path: "core/widget/service_test.go", want: []string{"test_support"}},
+		{path: "core/widget/service.go", want: []string{"core"}},
+	} {
+		matches := cfg.componentMatches(test.path)
+		var got []string
+		for _, match := range matches {
+			got = append(got, match.name)
+		}
+		if !reflect.DeepEqual(got, test.want) {
+			t.Fatalf("componentMatches(%q) = %v, want %v", test.path, got, test.want)
+		}
+	}
+
+	for _, test := range []struct {
+		path string
+		want string
+	}{
+		{path: "core/widget", want: "core"},
+		{path: "internal/mocks", want: "test_support"},
+	} {
+		got, ok := cfg.matchPackageComponent(test.path)
+		if !ok || got != test.want {
+			t.Fatalf("matchPackageComponent(%q) = %q, %t, want %q, true", test.path, got, ok, test.want)
+		}
+	}
+
+	if got, ok := cfg.matchPackageComponent("unowned/package"); ok {
+		t.Fatalf("matchPackageComponent(unowned/package) = %q, true, want no owner", got)
+	}
+}
+
 func TestCheckComponentOptionsReportsUnmatchedFile(t *testing.T) {
 	diagnostics := componentDiagnostics(t, &Config{
 		ComponentOptions: ComponentOptions{RequireMatch: true},

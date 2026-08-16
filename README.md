@@ -65,6 +65,10 @@ Components classify Go source files and internal import targets. Directory
 patterns classify importable packages; file patterns cover root files such as
 `app.go`.
 
+File patterns always classify source files. For import-target package
+ownership, only patterns whose basename is exactly `*.go` contribute their
+directory; constrained names such as `*_test.go` and `app.go` are source-only.
+
 ```yaml
 componentOptions:
   requireMatch: true
