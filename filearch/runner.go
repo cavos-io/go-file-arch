@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"go/ast"
-	"go/parser"
 	"go/token"
 	"os"
 	"path/filepath"
@@ -59,11 +58,25 @@ func Run(ctx context.Context, opts Options) error {
 		Context: ctx,
 		Dir:     cfg.workdirAbs,
 		Fset:    fset,
-		Mode:    packages.NeedName | packages.NeedFiles,
-		Tests:   true,
+		Mode: packages.NeedName |
+			packages.NeedFiles |
+			packages.NeedCompiledGoFiles |
+			packages.NeedImports |
+			packages.NeedTypes |
+			packages.NeedSyntax |
+			packages.NeedTypesInfo |
+			packages.NeedTypesSizes,
+		Tests: true,
 	}, patterns...)
 	if err != nil {
 		return fmt.Errorf("load packages: %w", err)
+	}
+	for _, pkg := range pkgs {
+		for _, packageErr := range pkg.Errors {
+			if packageErr.Kind == packages.ParseError {
+				return fmt.Errorf("parse %s", packageErr.Error())
+			}
+		}
 	}
 	if packages.PrintErrors(pkgs) > 0 {
 		return errors.New("package loading failed")
@@ -74,8 +87,8 @@ func Run(ctx context.Context, opts Options) error {
 	diagnostics = append(diagnostics, checkPathRules(cfg, inventory)...)
 	seenFiles := make(map[string]bool)
 	for _, pkg := range pkgs {
-		var filenames []string
-		for _, filename := range pkg.GoFiles {
+		var files []*ast.File
+		for i, filename := range pkg.CompiledGoFiles {
 			if !fileBelongsToWorkdir(filename, cfg) {
 				continue
 			}
@@ -83,16 +96,15 @@ func Run(ctx context.Context, opts Options) error {
 				continue
 			}
 			seenFiles[filename] = true
-			filenames = append(filenames, filename)
-		}
-		files, err := parsePackageFiles(fset, filenames)
-		if err != nil {
-			return err
+			files = append(files, pkg.Syntax[i])
 		}
 		pass := &analysis.Pass{
-			Analyzer: Analyzer,
-			Fset:     fset,
-			Files:    files,
+			Analyzer:   Analyzer,
+			Fset:       fset,
+			Files:      files,
+			Pkg:        pkg.Types,
+			TypesInfo:  pkg.TypesInfo,
+			TypesSizes: pkg.TypesSizes,
 			Report: func(d analysis.Diagnostic) {
 				pos := fset.Position(d.Pos)
 				diagnostics = append(diagnostics, ruleDiagnostic{
@@ -229,16 +241,4 @@ func formatArchLintFindings(result ArchLintCheckResult) string {
 		fmt.Fprintf(&b, "\n%d warning(s) omitted", result.OmittedCount)
 	}
 	return b.String()
-}
-
-func parsePackageFiles(fset *token.FileSet, filenames []string) ([]*ast.File, error) {
-	files := make([]*ast.File, 0, len(filenames))
-	for _, filename := range filenames {
-		file, err := parser.ParseFile(fset, filename, nil, parser.ParseComments)
-		if err != nil {
-			return nil, fmt.Errorf("parse %s: %w", filename, err)
-		}
-		files = append(files, file)
-	}
-	return files, nil
 }

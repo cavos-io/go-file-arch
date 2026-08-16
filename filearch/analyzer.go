@@ -61,6 +61,7 @@ func runWithConfig(pass *analysis.Pass, cfg *Config, inventory *repositoryInvent
 		checkDependencyRules(pass, file, cfg, paths)
 		checkImportRules(pass, file, cfg, paths)
 		checkDeclarationGroupingRules(pass, file, cfg, paths)
+		checkPackageVariableRules(pass, file, cfg, paths)
 	}
 
 	return nil, nil

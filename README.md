@@ -268,6 +268,33 @@ parenthesized group. When the single-group threshold matches, they must share
 one group containing no unselected declarations. Threshold ranges cannot
 overlap.
 
+`packageVariableRules` select package-scope variables by declaration and deny
+direct writes from a separately selected source set:
+
+```yaml
+packageVariableRules:
+  - id: static-package-values
+    files:
+      include: ["**/state.go"]
+    writeFiles:
+      include: ["**/*.go"]
+      exclude: ["**/*_test.go"]
+      generated: false
+    declaration:
+      kind: var
+      exported: false
+      initialized: true
+    denyWrites: true
+    message: selected package values are static after initialization
+```
+
+`files` selects declarations; optional `writeFiles` selects mutation sites and
+defaults to all Go source. Detection uses Go object identity, so local shadows
+do not match. It covers assignment, compound assignment, increment/decrement,
+range assignment, and writes through fields, indices, pointers, and
+parentheses rooted at the selected variable. It intentionally does not infer
+indirect mutation through arbitrary function calls.
+
 ### Complete import rules
 
 Import rules inspect standard-library, matched internal, unmatched internal,
