@@ -31,10 +31,14 @@ func checkFileContractRules(pass *analysis.Pass, file *ast.File, filename string
 	paths := pathCandidates(filename, cfg)
 	candidates := extractDeclarationCandidates(pass.Fset, file)
 	for _, rule := range cfg.FileContractRules {
+		if !fileSetAppliesToGenerated(rule.Files, file) {
+			continue
+		}
 		matches := cfg.matchFileSet(rule.Files, paths)
 		if len(matches) == 0 {
 			continue
 		}
+		seen := make(map[string]bool)
 		for _, match := range matches {
 			if inventory != nil {
 				dir := filepath.ToSlash(filepath.Dir(relativeToWorkdir(filename, cfg)))
@@ -51,7 +55,6 @@ func checkFileContractRules(pass *analysis.Pass, file *ast.File, filename string
 					pass.Reportf(file.Package, "[%s]: %s required declaration not found: %s", rule.ID, rule.Message, selectorDescription(expanded))
 				}
 			}
-			seen := make(map[string]bool)
 			for _, selector := range rule.Deny.Declarations {
 				expanded := expandDeclarationSelector(selector, match.Captures)
 				matched := matchingDeclarationCandidates(candidates, expanded)
@@ -211,6 +214,10 @@ func fileSetAppliesToPaths(files FileSet, paths []string) bool {
 		}
 	}
 	return false
+}
+
+func fileSetAppliesToGenerated(files FileSet, file *ast.File) bool {
+	return files.Generated == nil || *files.Generated == ast.IsGenerated(file)
 }
 
 func relativeToWorkdir(filename string, cfg *Config) string {

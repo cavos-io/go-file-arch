@@ -67,6 +67,7 @@ type FileSet struct {
 	Include   []string `yaml:"include"`
 	Exclude   []string `yaml:"exclude"`
 	Templates []string `yaml:"templates"`
+	Generated *bool    `yaml:"generated"`
 }
 
 type DeclarationSet struct {
@@ -140,6 +141,9 @@ func (cfg *Config) validate() error {
 	if cfg.Version != 1 {
 		return fmt.Errorf("version must be 1")
 	}
+	if err := cfg.validateGeneratedSelectionContexts(); err != nil {
+		return err
+	}
 	if err := cfg.validateComponents(); err != nil {
 		return err
 	}
@@ -174,6 +178,30 @@ func (cfg *Config) validate() error {
 		return err
 	}
 	return cfg.validateUniqueRuleIDs()
+}
+
+func (cfg *Config) validateGeneratedSelectionContexts() error {
+	for name, component := range cfg.Components {
+		if component.Files.Generated != nil {
+			return fmt.Errorf("component %q: generated selection is only valid for source files", name)
+		}
+	}
+	for _, rule := range cfg.DirectoryRules {
+		if rule.Directories.Generated != nil {
+			return fmt.Errorf("directory rule %q: generated selection is only valid for source files", rule.ID)
+		}
+	}
+	for _, rule := range cfg.DirectoryNameRules {
+		if rule.Directories.Generated != nil {
+			return fmt.Errorf("directoryName rule %q: generated selection is only valid for source files", rule.ID)
+		}
+	}
+	for _, rule := range cfg.PathRules {
+		if rule.Directories.Generated != nil {
+			return fmt.Errorf("path rule %q: generated selection is only valid for source files", rule.ID)
+		}
+	}
+	return nil
 }
 
 func validateSeverity(ruleID, severity string) error {

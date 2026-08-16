@@ -46,13 +46,13 @@ func runWithConfig(pass *analysis.Pass, cfg *Config, inventory *repositoryInvent
 		paths := pathCandidates(filename, cfg)
 		checkComponentOptions(pass, file, cfg, relativeToWorkdir(filename, cfg))
 		for _, rule := range cfg.ContentRules {
-			if !ruleAppliesToPath(rule, paths) {
+			if !fileSetAppliesToGenerated(rule.Files, file) || !ruleAppliesToPath(rule, paths) {
 				continue
 			}
 			checkContentRule(pass, file, rule)
 		}
 		for _, rule := range cfg.FileNameRules {
-			if !fileNameRuleAppliesToPath(rule, paths) {
+			if !fileSetAppliesToGenerated(rule.Files, file) || !fileNameRuleAppliesToPath(rule, paths) {
 				continue
 			}
 			checkFileNameRule(pass, file, filename, rule)

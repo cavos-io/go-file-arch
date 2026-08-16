@@ -1,6 +1,7 @@
 package filearch
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -642,6 +643,87 @@ components:
 	}
 	if got := cfg.Components["composition"].Files.Include; !reflect.DeepEqual(got, []string{"app.go"}) {
 		t.Fatalf("component files = %v", got)
+	}
+}
+
+func TestLoadConfigParsesGeneratedSelection(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		generated bool
+	}{
+		{name: "handwritten", generated: false},
+		{name: "generated", generated: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeConfigFixture(t, fmt.Sprintf(`
+version: 1
+fileContractRules:
+  - id: selected-source
+    files:
+      include: ["**/*.go"]
+      generated: %t
+    deny:
+      declarations:
+        - kind: alias
+    message: selected aliases are denied
+`, test.generated))
+
+			cfg, err := LoadConfig(path)
+			if err != nil {
+				t.Fatalf("LoadConfig() error = %v", err)
+			}
+			got := cfg.FileContractRules[0].Files.Generated
+			if got == nil || *got != test.generated {
+				t.Fatalf("Files.Generated = %v, want %t", got, test.generated)
+			}
+		})
+	}
+
+	path := writeConfigFixture(t, `
+version: 1
+fileContractRules:
+  - id: all-source
+    files:
+      include: ["**/*.go"]
+    deny:
+      declarations:
+        - kind: alias
+    message: aliases are denied
+`)
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if cfg.FileContractRules[0].Files.Generated != nil {
+		t.Fatalf("Files.Generated = %v, want nil when omitted", cfg.FileContractRules[0].Files.Generated)
+	}
+}
+
+func TestLoadConfigRejectsGeneratedSelectionOutsideSourceRules(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		yaml string
+	}{
+		{name: "component", yaml: `components:
+  generated:
+    files: {include: ["**/*.go"], generated: true}`},
+		{name: "directory rule", yaml: `directoryRules:
+  - id: generated
+    directories: {include: ["."], generated: true}`},
+		{name: "directory name rule", yaml: `directoryNameRules:
+  - id: generated
+    directories: {include: ["."], generated: true}`},
+		{name: "path rule", yaml: `pathRules:
+  - id: generated
+    directories: {include: ["."], generated: true}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := writeConfigFixture(t, "version: 1\n"+test.yaml+"\n")
+			_, err := LoadConfig(path)
+			if err == nil || !strings.Contains(err.Error(), "generated selection is only valid for source files") {
+				t.Fatalf("LoadConfig() error = %v, want generated source selection error", err)
+			}
+		})
 	}
 }
 

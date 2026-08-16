@@ -283,6 +283,18 @@ Generated files and tests are analyzed unless a rule excludes them. There is no
 built-in baseline, warning mode, changed-files-only mode, or service-specific
 suppression mechanism.
 
+Source rules can select handwritten or generated files independently:
+
+```yaml
+files:
+  include: ["**/*.go"]
+  generated: false
+```
+
+Omitting `generated` preserves the default of analyzing both. Detection uses
+Go's `ast.IsGenerated`; a filename alone never grants an exemption. Components
+and directory/path rules remain path-based and cannot use this selector.
+
 ## Development
 
 ```sh

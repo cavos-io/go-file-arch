@@ -94,7 +94,7 @@ func checkImportRules(pass *analysis.Pass, file *ast.File, cfg *Config, paths []
 		return
 	}
 	for _, rule := range cfg.ImportRules {
-		if len(cfg.matchFileSet(rule.Files, paths)) == 0 {
+		if !fileSetAppliesToGenerated(rule.Files, file) || len(cfg.matchFileSet(rule.Files, paths)) == 0 {
 			continue
 		}
 		for _, spec := range file.Imports {
