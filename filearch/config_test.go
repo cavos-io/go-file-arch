@@ -99,6 +99,121 @@ contentRules:
 	}
 }
 
+func TestLoadConfigParsesCallRules(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yml")
+	err := os.WriteFile(path, []byte(`
+version: 1
+callRules:
+  - id: load-config
+    files:
+      include: [cmd/main.go]
+    callee:
+      package: example.com/config
+      name: GetConfig
+    require:
+      arguments:
+        - position: 0
+          type:
+            packageMatches: ['^example\.com/service/internal/config$']
+            name: Config
+            pointer: true
+      count: {equals: 1}
+    denyNonMatching: true
+    message: load config exactly once
+`), 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if len(cfg.CallRules) != 1 {
+		t.Fatalf("len(CallRules) = %d, want 1", len(cfg.CallRules))
+	}
+	rule := cfg.CallRules[0]
+	if rule.ID != "load-config" || rule.Callee.Package != "example.com/config" || rule.Callee.Name != "GetConfig" {
+		t.Fatalf("CallRules[0] = %#v", rule)
+	}
+	if !rule.DenyNonMatching || rule.Require.Count.Equals == nil || *rule.Require.Count.Equals != 1 {
+		t.Fatalf("CallRules[0].Require = %#v", rule.Require)
+	}
+	argument := rule.Require.Arguments[0]
+	if argument.Position != 0 || argument.Type.Name != "Config" || argument.Type.Pointer == nil || !*argument.Type.Pointer {
+		t.Fatalf("CallRules[0].Require.Arguments[0] = %#v", argument)
+	}
+}
+
+func TestLoadConfigRejectsInvalidCallRules(t *testing.T) {
+	tests := map[string]string{
+		"missing id": `callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}`,
+		"missing callee package": `id: bad
+    callee: {name: GetConfig}
+    require: {count: {equals: 1}}`,
+		"missing callee name": `id: bad
+    callee: {package: example.com/config}
+    require: {count: {equals: 1}}`,
+		"negative argument": `id: bad
+    callee: {package: example.com/config, name: GetConfig}
+    require:
+      arguments: [{position: -1, type: {name: Config}}]`,
+		"empty type": `id: bad
+    callee: {package: example.com/config, name: GetConfig}
+    require:
+      arguments: [{position: 0, type: {}}]`,
+		"invalid regex": `id: bad
+    callee: {package: example.com/config, name: GetConfig}
+    require:
+      arguments: [{position: 0, type: {packageMatches: ['[']}}]`,
+		"empty conditions": `id: bad
+    callee: {package: example.com/config, name: GetConfig}`,
+		"unsupported severity": `id: bad
+    severity: warning
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}`,
+		"missing files": `id: bad
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}
+    message: required`,
+		"missing message": `id: bad
+    files: {include: [cmd/main.go]}
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}`,
+		"undefined template": `id: bad
+    files: {templates: [missing]}
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}
+    message: required`,
+		"incompatible count": `id: bad
+    files: {include: [cmd/main.go]}
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1, min: 1}}
+    message: required`,
+		"nonmatching without arguments": `id: bad
+    files: {include: [cmd/main.go]}
+    callee: {package: example.com/config, name: GetConfig}
+    require: {count: {equals: 1}}
+    denyNonMatching: true
+    message: required`,
+	}
+
+	for name, body := range tests {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yml")
+			data := "version: 1\ncallRules:\n  - " + body + "\n"
+			if err := os.WriteFile(path, []byte(data), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := LoadConfig(path); err == nil {
+				t.Fatal("LoadConfig() error = nil, want invalid call rule error")
+			}
+		})
+	}
+}
+
 func TestLoadConfigParsesFileNameRules(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yml")

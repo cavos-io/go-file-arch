@@ -335,6 +335,49 @@ conditions to the base filename. They can be gated by declaration kinds or type
 name expressions. See the executable fixture and package tests for canonical
 field combinations.
 
+### Resolved call rules
+
+`callRules` require or deny direct function calls without depending on import
+aliases or local variable names. Callees are identified by the resolved package
+import path and function name. Argument selectors use resolved Go types.
+
+```yaml
+callRules:
+  - id: load-config
+    files:
+      include: [cmd/main.go]
+    callee:
+      package: example.com/config
+      name: GetConfig
+    require:
+      arguments:
+        - position: 0
+          type:
+            package: example.com/service/internal/config
+            name: Config
+            pointer: true
+      count: {equals: 1}
+    denyNonMatching: true
+    message: load the application config exactly once
+```
+
+Each argument selector has a zero-based `position`. Its `type` may select
+`package`, `packageMatches`, `name`, `nameMatches`, `pointer`, and
+`typeMatches`. `typeMatches` sees a canonical type string whose package
+qualifiers are full import paths. File selection supports the same includes,
+excludes, generated-source selection, and reusable path templates as other
+source rules.
+
+`require.count` constrains calls matching all required arguments.
+`denyNonMatching` reports calls to the selected callee whose arguments do not
+match the required selectors. A `deny` without a count reports every matching
+call; a counted deny reports when its matching-call count satisfies the denied
+count.
+
+Only direct calls resolve as callees. Calls through variables that store
+function values are intentionally outside this syntax-only rule; use import and
+file contracts to constrain where the original package can be referenced.
+
 ## Diagnostics and repository-wide behavior
 
 Diagnostics are sorted by path, line, column, rule ID, then message. Valid

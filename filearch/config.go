@@ -26,6 +26,7 @@ type Config struct {
 	ImportRules              []ImportRule              `yaml:"importRules"`
 	DeclarationGroupingRules []DeclarationGroupingRule `yaml:"declarationGroupingRules"`
 	PackageVariableRules     []PackageVariableRule     `yaml:"packageVariableRules"`
+	CallRules                []CallRule                `yaml:"callRules"`
 	Templates                map[string]PathTemplate   `yaml:"templates"`
 
 	baseDir string
@@ -185,6 +186,9 @@ func (cfg *Config) validate() error {
 	if err := cfg.validatePackageVariableRules(); err != nil {
 		return err
 	}
+	if err := cfg.validateCallRules(); err != nil {
+		return err
+	}
 	return cfg.validateUniqueRuleIDs()
 }
 
@@ -269,6 +273,11 @@ func (cfg *Config) validateUniqueRuleIDs() error {
 		}
 	}
 	for _, rule := range cfg.PackageVariableRules {
+		if err := check(rule.ID); err != nil {
+			return err
+		}
+	}
+	for _, rule := range cfg.CallRules {
 		if err := check(rule.ID); err != nil {
 			return err
 		}
